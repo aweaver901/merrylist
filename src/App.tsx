@@ -1,32 +1,25 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronRight, CircleHelp, Copy, Gift as GiftIcon, Heart, Menu, RotateCcw, Sparkles, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { gifts, themes, type Gift, type GiftTheme } from './data/gifts'
+import { useEffect, useMemo, useState } from 'react'
+import { gifts, listContent, quizChoices, themes, type Gift, type QuizChoice } from './data/gifts'
 
-type QuizChoice = 'slow' | 'outside' | 'design' | 'luxury'
+type QuizChoiceId = QuizChoice['id']
 
-const quizLabels: Record<QuizChoice, string> = {
-  slow: 'A quiet, cozy morning',
-  outside: 'A little adventure outside',
-  design: 'Something beautiful and useful',
-  luxury: 'A pocket of calm and comfort',
-}
-
-const quizTheme: Record<QuizChoice, GiftTheme> = {
-  slow: 'Slow mornings',
-  outside: 'Outside time',
-  design: 'Good design',
-  luxury: 'Little luxuries',
-}
+const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
 
 function App() {
   const [activeTheme, setActiveTheme] = useState<(typeof themes)[number]>('All gifts')
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
   const [quizOpen, setQuizOpen] = useState(false)
-  const [quizChoice, setQuizChoice] = useState<QuizChoice | null>(null)
+  const [quizChoice, setQuizChoice] = useState<QuizChoiceId | null>(null)
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    document.title = personalize(listContent.pageTitle)
+    document.querySelector('meta[name="description"]')?.setAttribute('content', personalize(listContent.metaDescription))
+  }, [])
 
   const visibleGifts = useMemo(
     () => activeTheme === 'All gifts' ? gifts : gifts.filter((gift) => gift.theme === activeTheme),
@@ -43,14 +36,16 @@ function App() {
     window.setTimeout(() => setCopied(false), 2200)
   }
 
-  const recommendation = quizChoice ? gifts.find((gift) => gift.theme === quizTheme[quizChoice]) : undefined
+  const recommendationTheme = quizChoices.find((choice) => choice.id === quizChoice)?.theme
+  const recommendation = recommendationTheme ? gifts.find((gift) => gift.theme === recommendationTheme) : undefined
+  const heroGift = gifts.find((gift) => gift.id === listContent.hero.imageGiftId) ?? gifts[0]
 
   return (
     <main className="site-shell">
       <div className="grain" />
       <nav className="topbar">
         <a className="wordmark" href="#top" aria-label="Merrylist home">
-          <span className="wordmark-star">✳</span> merrylist
+          <span className="wordmark-star">✳</span> {listContent.brand}
         </a>
         <div className={`nav-links ${menuOpen ? 'is-open' : ''}`}>
           <a href="#gifts" onClick={() => setMenuOpen(false)}>The list</a>
@@ -67,9 +62,9 @@ function App() {
 
       <section className="hero" id="top">
         <motion.div className="hero-copy" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .7 }}>
-          <p className="eyebrow"><span /> Austin's Christmas list <span /></p>
-          <h1>A few things<br /><em>worth wishing for.</em></h1>
-          <p className="hero-intro">A carefully gathered collection of things I’d love to unwrap, use, wear, or wander with. Pick what feels most like me.</p>
+          <p className="eyebrow"><span /> {personalize(listContent.hero.eyebrow)} <span /></p>
+          <h1>{listContent.hero.titleFirst}<br /><em>{listContent.hero.titleEmphasis}</em></h1>
+          <p className="hero-intro">{listContent.hero.introduction}</p>
           <div className="hero-actions">
             <a className="primary-button" href="#gifts">Explore the list <ArrowUpRight size={17} /></a>
             <button className="text-button" onClick={() => setQuizOpen(true)}><Sparkles size={16} /> Help me choose</button>
@@ -77,16 +72,16 @@ function App() {
         </motion.div>
         <motion.div className="hero-art" initial={{ opacity: 0, scale: .94, rotate: 2 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: .9, delay: .15 }}>
           <div className="orbit orbit-one" /><div className="orbit orbit-two" />
-          <div className="hero-image-wrap"><img src={gifts[2].image} alt="A quiet campsite by the water" /></div>
-          <div className="hero-sticker"><span>6</span> thoughtful<br />possibilities</div>
-          <div className="hero-caption"><span>01</span> somewhere between<br />wanting &amp; needing</div>
+          <div className="hero-image-wrap"><img src={heroGift?.image} alt={listContent.hero.imageAlt} /></div>
+          <div className="hero-sticker"><span>{gifts.length}</span> {listContent.hero.stickerLabel}</div>
+          <div className="hero-caption"><span>01</span> {listContent.hero.captionFirst}<br />{listContent.hero.captionSecond}</div>
         </motion.div>
       </section>
 
       <section className="list-section" id="gifts">
         <div className="section-heading">
-          <div><p className="eyebrow left">The good stuff</p><h2>Choose your<br /><em>own adventure.</em></h2></div>
-          <p className="section-note">No pressure, no wrong answers.<br />Just things I’d be genuinely happy to see.</p>
+          <div><p className="eyebrow left">{listContent.list.eyebrow}</p><h2>{listContent.list.titleFirst}<br /><em>{listContent.list.titleEmphasis}</em></h2></div>
+          <p className="section-note">{listContent.list.noteFirst}<br />{listContent.list.noteSecond}</p>
         </div>
         <div className="theme-tabs" role="tablist" aria-label="Filter by theme">
           {themes.map((theme) => <button key={theme} className={activeTheme === theme ? 'active' : ''} onClick={() => setActiveTheme(theme)}>{theme}</button>)}
@@ -100,12 +95,12 @@ function App() {
 
       <section className="choose-section" id="how-it-works">
         <div className="choose-star"><Sparkles size={24} /></div>
-        <div><p className="eyebrow left">Still deciding?</p><h2>Make it a little<br /><em>more personal.</em></h2></div>
-        <p>Answer three tiny questions and I’ll point you toward the gift that feels the most Austin.</p>
+        <div><p className="eyebrow left">{listContent.choose.eyebrow}</p><h2>{listContent.choose.titleFirst}<br /><em>{listContent.choose.titleEmphasis}</em></h2></div>
+        <p>{personalize(listContent.choose.description)}</p>
         <button className="outline-button" onClick={() => setQuizOpen(true)}>Find my match <ChevronRight size={17} /></button>
       </section>
 
-      <footer><span>Made with hope, lists &amp; a little holiday magic.</span><span className="footer-mark">a / '26</span></footer>
+      <footer><span>{listContent.footer}</span><span className="footer-mark">{listContent.footerMark}</span></footer>
 
       <AnimatePresence>{selectedGift && <GiftModal gift={selectedGift} isFavorite={favorites.includes(selectedGift.id)} onFavorite={() => toggleFavorite(selectedGift.id)} onClose={() => setSelectedGift(null)} />}</AnimatePresence>
       <AnimatePresence>{quizOpen && <QuizModal choice={quizChoice} recommendation={recommendation} onChoice={setQuizChoice} onClose={() => { setQuizOpen(false); setQuizChoice(null) }} onOpenGift={(gift) => { setQuizOpen(false); setQuizChoice(null); setSelectedGift(gift) }} />}</AnimatePresence>
@@ -129,8 +124,8 @@ function GiftModal({ gift, isFavorite, onFavorite, onClose }: { gift: Gift; isFa
   </motion.div></motion.div>
 }
 
-function QuizModal({ choice, recommendation, onChoice, onClose, onOpenGift }: { choice: QuizChoice | null; recommendation: Gift | undefined; onChoice: (choice: QuizChoice | null) => void; onClose: () => void; onOpenGift: (gift: Gift) => void }) {
-  return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div className="quiz-modal" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 18 }} onClick={(event) => event.stopPropagation()}><button className="close-button" onClick={onClose} aria-label="Close"><X size={19} /></button>{!recommendation ? <><div className="quiz-icon"><CircleHelp size={25} /></div><p className="eyebrow left">The highly scientific method</p><h2>What kind of gift<br /><em>feels most like you?</em></h2><div className="quiz-options">{(Object.keys(quizLabels) as QuizChoice[]).map((key) => <button key={key} className={choice === key ? 'selected' : ''} onClick={() => onChoice(key)}>{quizLabels[key]}<ChevronRight size={16} /></button>)}</div></> : <><div className="quiz-icon"><Sparkles size={25} /></div><p className="eyebrow left">Your very good match</p><h2>Go with<br /><em>{recommendation.name}.</em></h2><p className="quiz-result">{recommendation.note}</p><button className="primary-button" onClick={() => onOpenGift(recommendation)}>Tell me more <ArrowUpRight size={16} /></button><button className="reset-button" onClick={() => onChoice(null)}><RotateCcw size={14} /> Start over</button></>}</motion.div></motion.div>
+function QuizModal({ choice, recommendation, onChoice, onClose, onOpenGift }: { choice: QuizChoiceId | null; recommendation: Gift | undefined; onChoice: (choice: QuizChoiceId | null) => void; onClose: () => void; onOpenGift: (gift: Gift) => void }) {
+  return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div className="quiz-modal" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 18 }} onClick={(event) => event.stopPropagation()}><button className="close-button" onClick={onClose} aria-label="Close"><X size={19} /></button>{!recommendation ? <><div className="quiz-icon"><CircleHelp size={25} /></div><p className="eyebrow left">{listContent.quiz.kicker}</p><h2>{listContent.quiz.titleFirst}<br /><em>{listContent.quiz.titleEmphasis}</em></h2><div className="quiz-options">{quizChoices.map((quizChoice) => <button key={quizChoice.id} className={choice === quizChoice.id ? 'selected' : ''} onClick={() => onChoice(quizChoice.id)}>{quizChoice.label}<ChevronRight size={16} /></button>)}</div></> : <><div className="quiz-icon"><Sparkles size={25} /></div><p className="eyebrow left">{listContent.quiz.resultKicker}</p><h2>Go with<br /><em>{recommendation.name}.</em></h2><p className="quiz-result">{recommendation.note}</p><button className="primary-button" onClick={() => onOpenGift(recommendation)}>Tell me more <ArrowUpRight size={16} /></button><button className="reset-button" onClick={() => onChoice(null)}><RotateCcw size={14} /> Start over</button></>}</motion.div></motion.div>
 }
 
 export default App

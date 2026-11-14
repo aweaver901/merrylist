@@ -1,4 +1,4 @@
-export type GiftTheme = 'Slow mornings' | 'Good design' | 'Outside time' | 'Little luxuries'
+export type GiftTheme = 'Slow mornings' | 'Good design' | 'Outside time' | 'Little luxuries' | 'Footwear'
 
 export type Gift = {
   id: string
@@ -15,15 +15,15 @@ export type Gift = {
 // Add or edit gifts here. The rest of the app reads this list automatically.
 export const gifts: Gift[] = [
   {
-    id: 'coffee-set',
-    name: 'Fellow Stagg EKG',
-    cost: 185,
-    theme: 'Slow mornings',
-    link: 'https://fellowproducts.com/products/stagg-ekg-electric-kettle',
-    description: 'A beautifully precise kettle for the ritual of making coffee slowly and properly.',
-    image: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=1200&q=85',
-    note: 'For the first cup, before the day gets loud.',
-    tags: ['coffee', 'daily ritual'],
+    id: 'black-slides',
+    name: 'Draco Slides',
+    cost: 99,
+    theme: 'Footwear',
+    link: 'https://www.amazon.com/Reflective-DracoSlides-Adjustable-Resistant-Footwear/dp/B0DNGQC25J?ref_=ast_sto_dp&th=1&psc=1',
+    description: 'A simple, comfortable slide that’s easy to wear around the house or on a quick errand.',
+    image: 'https://images.unsplash.com/photo-1682685790910-1f3e5c7b8d9e?auto=format&fit=crop&w=1200&q=85',
+    note: 'The kind of footwear that makes a regular Tuesday feel considered.',
+    tags: ['wearable', 'everyday'],
   },
   {
     id: 'linen-shirt',
@@ -89,3 +89,56 @@ export const themes: Array<'All gifts' | GiftTheme> = [
   'Outside time',
   'Little luxuries',
 ]
+
+export type QuizChoice = {
+  id: string
+  label: string
+  theme: GiftTheme
+}
+
+export const quizChoices: QuizChoice[] = [
+  { id: 'slow', label: 'A quiet, cozy morning', theme: 'Slow mornings' },
+  { id: 'outside', label: 'A little adventure outside', theme: 'Outside time' },
+  { id: 'design', label: 'Something beautiful and useful', theme: 'Good design' },
+  { id: 'luxury', label: 'A pocket of calm and comfort', theme: 'Little luxuries' },
+]
+
+// Keep the list's owner-specific words and page details here with the gifts.
+export const listContent = {
+  owner: 'Austin',
+  brand: 'merrylist',
+  pageTitle: "{owner}'s Merrylist",
+  metaDescription: "{owner}'s Christmas wish list — choose something that feels like me.",
+  hero: {
+    eyebrow: "{owner}'s Christmas list",
+    titleFirst: 'A few things',
+    titleEmphasis: 'worth wishing for.',
+    introduction: 'A carefully gathered collection of things I’d love to unwrap, use, wear, or wander with. Pick what feels most like me.',
+    imageGiftId: 'camp-chair',
+    imageAlt: 'A quiet campsite by the water',
+    stickerLabel: 'thoughtful possibilities',
+    captionFirst: 'somewhere between',
+    captionSecond: 'wanting & needing',
+  },
+  list: {
+    eyebrow: 'The good stuff',
+    titleFirst: 'Choose your',
+    titleEmphasis: 'own adventure.',
+    noteFirst: 'No pressure, no wrong answers.',
+    noteSecond: 'Just things I’d be genuinely happy to see.',
+  },
+  choose: {
+    eyebrow: 'Still deciding?',
+    titleFirst: 'Make it a little',
+    titleEmphasis: 'more personal.',
+    description: 'Answer three tiny questions and I’ll point you toward the gift that feels most like {owner}.',
+  },
+  footer: 'Made with hope, lists & a little holiday magic.',
+  footerMark: "a / '26",
+  quiz: {
+    kicker: 'The highly scientific method',
+    titleFirst: 'What kind of gift',
+    titleEmphasis: 'feels most like you?',
+    resultKicker: 'Your very good match',
+  },
+}
