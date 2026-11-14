@@ -1,4 +1,4 @@
-export type GiftTheme = 'Slow mornings' | 'Good design' | 'Outside time' | 'Little luxuries' | 'Footwear' | 'Food & drink'
+export type GiftTheme = 'Footwear' | 'Food & drink' | 'Gift Card'
 
 export type Gift = {
   id: string
@@ -32,64 +32,51 @@ export const gifts: Gift[] = [
     theme: 'Food & drink',
     link: 'https://www.amazon.com/Snack-Super-Soft-Pretzel-case/dp/B00B042C8S/ref=sr_1_23?crid=2HBN5OMO0GX0F&dib=eyJ2IjoiMSJ9.bzYS9FGEGnSecXgWKMqWGfG9fJVQgSqf2ht_byuhVh_YL-76vbQS9PSmto3WfSlDQNSgyNsqLug5t5FLDzJ_y-RH3C9mLGJrLYisU0JJnOngellF0waWRH7P9anK2C7Rk8ikaImGl9lUh6FCYF2ZcACfLdIp2lUgggt973UZo93Md6bKCqLD3Llzd2CP5rF6tdJl1-aLMCvkTI7Sm6GP2cXz2vWQezZvPniNVqj570hqf7y7pgImllnJgHNiLj9EgVv8v3zH6AhDUJhLY6WxmB2mC5n-XmNK3DQvTWyEPHA.fxcl6GswbWQVzSgvHKmrWrNoF8-4IRxKnCbt24xO4AA&dib_tag=se&keywords=soft+pretzels&qid=1794669281&sprefix=soft+pretzels%2Caps%2C163&sr=8-23',
     description: 'A box of soft pretzels for a cozy night in, a quick snack, or a little something to share.',
-    image: 'https://m.media-amazon.com/images/G/01/apparel/rcxgs/tile._CB483369110_.gif',
+    image: 'https://m.media-amazon.com/images/W/BW_MEDIAX_AVIF_MEASUREMENT_1306696-T4/images/I/61XSCMaiycL._SL1000_.jpg',
     note: 'A little salty, a little sweet, and a lot of comfort.',
     tags: ['food', 'snack', 'cozy'],
   },
-  {
-    id: 'camp-chair',
-    name: 'Helinox Chair One',
-    cost: 110,
-    theme: 'Outside time',
-    link: 'https://helinox.com/products/chair-one',
-    description: 'A light, comfortable camp chair for parks, porches, and last-minute sunsets.',
-    image: 'https://images.unsplash.com/photo-1504851149312-7a075b496cc7?auto=format&fit=crop&w=1200&q=85',
-    note: 'For sitting somewhere beautiful with nowhere else to be.',
-    tags: ['camping', 'weekends'],
+   {
+    id: 'amazon-gift-card',
+    name: 'Amazon Gift Card',
+    cost: 25,
+    theme: 'Gift Card',
+    link: 'https://www.amazon.com/gp/registry/gift-card/create?ie=UTF8&ref_=ast_sto_dp',
+    description: 'A gift card to spend on anything you like from Amazon.',
+    image: 'https://m.media-amazon.com/images/I/51Z7J9ZJZJL._AC_SL1000_.jpg',
+    note: 'The perfect way to give the gift of choice.',
+    tags: ['gift card', 'flexible'],
   },
   {
-    id: 'headphones',
-    name: 'QuietComfort Ultra',
-    cost: 379,
-    theme: 'Little luxuries',
-    link: 'https://www.bose.com/p/headphones/bose-quietcomfort-ultra-headphones/QCUH-HEADPHONEARN.html',
-    description: 'A soft little pocket of silence for flights, focused work, or a long walk home.',
-    image: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=1200&q=85',
-    note: 'A little more quiet is never a bad thing.',
-    tags: ['music', 'focus'],
+    id: 'amc-gift-card',
+    name: 'AMC Gift Card',
+    cost: 25,
+    theme: 'Gift Card',
+    link: 'https://www.amctheatres.com/gift-cards',
+    description: 'A gift card to spend on anything you like from AMC.',
+    image: 'https://www.amctheatres.com/wp-content/uploads/2020/12/AMC-Gift-Card-1024x576.png',
+    note: 'The perfect way to give the gift of choice.',
+    tags: ['gift card', 'flexible'],
   },
-  {
-    id: 'book',
-    name: 'The Art of Noticing',
-    cost: 24,
-    theme: 'Slow mornings',
-    link: 'https://www.penguinrandomhouse.com/books/608103/the-art-of-noticing-by-rob-walker/',
-    description: 'A playful field guide for seeing more of the interesting world hiding in plain sight.',
-    image: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=85',
-    note: 'For a curious brain and a spare patch of afternoon.',
-    tags: ['reading', 'curiosity'],
+{
+    id: 'VeraCosy-Mens-Two-Tone-Memory-Slippers',
+    name: 'VeraCosy Mens Two-Tone Memory Slippers',
+    cost: 35,
+    theme: 'Footwear',
+    link: 'https://www.amazon.com/VeraCosy-Mens-Two-Tone-Memory-Slippers/dp/B07CLXD2V4/ref=sr_1_51?crid=DRIQS2JTFNXW&dib=eyJ2IjoiMSJ9.YaUqzn5CouRE81vlUjjOv_RnQRNlnmY9QG2Fwb-wl1CFGzJtJl-3d5ZBFBGxBJBwWiM2eVXTpQG13aoAX2oaja6g6pgDYllmWZuMN4EIs8TIbw_q71kVBFPgoZEFsIW5XNDbmk2TwD1gCF85VEcueamJvalf0orwcrUa9tEK7HEXLJsjvySj2bp59AXMGdBVbErUw5ry5EzTbdkfQPOz6cvkxs6auR5LEUUNcjnt4MkG3EwlimoYw5089-zLxjY65eXAsFZqmHiu9kVLoflGK5tRT0ROkviV24tkSqvVd6Y.Ai8coiDdLsb9msANlSVsywhPDNIByK2WCF-AFNAQTrs&dib_tag=se&keywords=gifts+for+me&qid=1794669953&sprefix=gifts+for+me%2Caps%2C170&sr=8-51',
+    description: 'Comfortable memory foam slippers for everyday wear.',
+    image: 'https://m.media-amazon.com/images/I/81EEfuhlShL._AC_AIweblab1392912,T4_FMavif_SF1042.5,1042.5_PQ65_.jpg?aicid=detailPage-mediaBlock',
+    note: 'Soft and supportive, perfect for those chilly evenings.',
+    tags: ['footwear', 'comfortable', 'everyday'],
   },
-  {
-    id: 'record-player',
-    name: 'Audio-Technica LP60X',
-    cost: 149,
-    theme: 'Good design',
-    link: 'https://www.audio-technica.com/en-us/at-lp60x',
-    description: 'A friendly first turntable for making an ordinary room sound like an occasion.',
-    image: 'https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=1200&q=85',
-    note: 'Because some albums deserve a little ceremony.',
-    tags: ['music', 'home'],
-  },
-]
+
+  ]
 
 export const themes: Array<'All gifts' | GiftTheme> = [
   'All gifts',
-  'Slow mornings',
-  'Good design',
-  'Outside time',
-  'Little luxuries',
   'Footwear',
   'Food & drink',
+  'Gift Card'
 ]
 
 export type QuizChoice = {
@@ -99,12 +86,9 @@ export type QuizChoice = {
 }
 
 export const quizChoices: QuizChoice[] = [
-  { id: 'slow', label: 'A quiet, cozy morning', theme: 'Slow mornings' },
-  { id: 'outside', label: 'A little adventure outside', theme: 'Outside time' },
-  { id: 'design', label: 'Something beautiful and useful', theme: 'Good design' },
-  { id: 'luxury', label: 'A pocket of calm and comfort', theme: 'Little luxuries' },
   { id: 'shoes', label: 'Something to wear on my feet', theme: 'Footwear' },
   { id: 'food', label: 'Something delicious to eat', theme: 'Food & drink' },
+  { id: 'gift-card', label: 'A gift card for any occasion', theme: 'Gift Card' },
 ]
 
 // Keep the list's owner-specific words and page details here with the gifts.
