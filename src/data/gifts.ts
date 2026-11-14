@@ -1,4 +1,4 @@
-export type GiftTheme = 'Slow mornings' | 'Good design' | 'Outside time' | 'Little luxuries' | 'Footwear'
+export type GiftTheme = 'Slow mornings' | 'Good design' | 'Outside time' | 'Little luxuries' | 'Footwear' | 'Food & drink'
 
 export type Gift = {
   id: string
@@ -26,15 +26,15 @@ export const gifts: Gift[] = [
     tags: ['wearable', 'everyday'],
   },
   {
-    id: 'linen-shirt',
-    name: 'Linen camp shirt',
-    cost: 98,
-    theme: 'Good design',
-    link: 'https://www.uniqlo.com/us/en/products/E455958-000',
-    description: 'An easy, well-cut layer in a natural texture that gets better with every wear.',
-    image: 'https://images.unsplash.com/photo-1610652492500-ded49ceeb378?auto=format&fit=crop&w=1200&q=85',
-    note: 'The kind of shirt that makes a regular Tuesday feel considered.',
-    tags: ['wearable', 'everyday'],
+    id: 'food-soft-pretzels',
+    name: 'Soft Pretzels',
+    cost: 89.47,
+    theme: 'Food & drink',
+    link: 'https://www.amazon.com/Snack-Super-Soft-Pretzel-case/dp/B00B042C8S/ref=sr_1_23?crid=2HBN5OMO0GX0F&dib=eyJ2IjoiMSJ9.bzYS9FGEGnSecXgWKMqWGfG9fJVQgSqf2ht_byuhVh_YL-76vbQS9PSmto3WfSlDQNSgyNsqLug5t5FLDzJ_y-RH3C9mLGJrLYisU0JJnOngellF0waWRH7P9anK2C7Rk8ikaImGl9lUh6FCYF2ZcACfLdIp2lUgggt973UZo93Md6bKCqLD3Llzd2CP5rF6tdJl1-aLMCvkTI7Sm6GP2cXz2vWQezZvPniNVqj570hqf7y7pgImllnJgHNiLj9EgVv8v3zH6AhDUJhLY6WxmB2mC5n-XmNK3DQvTWyEPHA.fxcl6GswbWQVzSgvHKmrWrNoF8-4IRxKnCbt24xO4AA&dib_tag=se&keywords=soft+pretzels&qid=1794669281&sprefix=soft+pretzels%2Caps%2C163&sr=8-23',
+    description: 'A box of soft pretzels for a cozy night in, a quick snack, or a little something to share.',
+    image: 'https://m.media-amazon.com/images/G/01/apparel/rcxgs/tile._CB483369110_.gif',
+    note: 'A little salty, a little sweet, and a lot of comfort.',
+    tags: ['food', 'snack', 'cozy'],
   },
   {
     id: 'camp-chair',
@@ -89,6 +89,7 @@ export const themes: Array<'All gifts' | GiftTheme> = [
   'Outside time',
   'Little luxuries',
   'Footwear',
+  'Food & drink',
 ]
 
 export type QuizChoice = {
@@ -102,6 +103,8 @@ export const quizChoices: QuizChoice[] = [
   { id: 'outside', label: 'A little adventure outside', theme: 'Outside time' },
   { id: 'design', label: 'Something beautiful and useful', theme: 'Good design' },
   { id: 'luxury', label: 'A pocket of calm and comfort', theme: 'Little luxuries' },
+  { id: 'shoes', label: 'Something to wear on my feet', theme: 'Footwear' },
+  { id: 'food', label: 'Something delicious to eat', theme: 'Food & drink' },
 ]
 
 // Keep the list's owner-specific words and page details here with the gifts.
