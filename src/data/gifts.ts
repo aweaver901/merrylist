@@ -88,6 +88,7 @@ export const themes: Array<'All gifts' | GiftTheme> = [
   'Good design',
   'Outside time',
   'Little luxuries',
+  'Footwear',
 ]
 
 export type QuizChoice = {
