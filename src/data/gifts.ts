@@ -21,7 +21,7 @@ export const gifts: Gift[] = [
     theme: 'Footwear',
     link: 'https://www.amazon.com/Reflective-DracoSlides-Adjustable-Resistant-Footwear/dp/B0DNGQC25J?ref_=ast_sto_dp&th=1&psc=1',
     description: 'A simple, comfortable slide that’s easy to wear around the house or on a quick errand.',
-    image: 'https://images.unsplash.com/photo-1682685790910-1f3e5c7b8d9e?auto=format&fit=crop&w=1200&q=85',
+    image: 'https://m.media-amazon.com/images/I/71ytw8CqMkL._AC_AIweblab1392912,T4_FMavif_SF1042.5,1042.5_PQ65_.jpg?aicid=detailPage-mediaBlock',
     note: 'The kind of footwear that makes a regular Tuesday feel considered.',
     tags: ['wearable', 'everyday'],
   },
