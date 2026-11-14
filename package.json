@@ -6,9 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:quiz": "node scripts/check-quiz.cjs",
+    "test:coordination": "node scripts/check-coordination.mjs",
+    "test:browser": "node scripts/check-coordination-browser.mjs",
+    "sync:catalog": "node scripts/sync-gift-catalog.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "@vitejs/plugin-react": "latest",
     "framer-motion": "latest",
     "lucide-react": "latest",
@@ -17,6 +22,8 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@playwright/test": "^1.65.1",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "typescript": "latest"

@@ -1,3 +1,8 @@
 node_modules
 dist
 .DS_Store
+image-audit/
+.tools/
+.env
+.env.*
+!.env.example
