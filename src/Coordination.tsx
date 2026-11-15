@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { Session } from '@supabase/supabase-js'
 import { fallbackChristmasSongs } from './data/christmasSongs'
 import type { Gift } from './data/gifts'
-import { coordinationClient as client, readApprovedIdeas, readChristmasSongs, readGiftSuggestions, readSnapshot, type ChristmasSong, type ChristmasSongInput, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput } from './lib/coordination'
+import { coordinationClient as client, readApprovedIdeas, readChristmasSongs, readGiftSuggestions, readShopperChatMessages, readSnapshot, type ChristmasSong, type ChristmasSongInput, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput, type ShopperChatMessage } from './lib/coordination'
 
 const builtInChristmasSongs: ChristmasSong[] = fallbackChristmasSongs.map((song, index) => ({
   ...song,
@@ -20,12 +20,16 @@ type Coordination = {
   loading: boolean; error: string; stale: boolean; busyGift: string | null
   approvedIdeas: Gift[]; suggestions: GiftSuggestion[]; suggestionsLoading: boolean
   suggestionsBusy: boolean; suggestionsError: string
+  chatMessages: ShopperChatMessage[]; chatLoading: boolean; chatBusy: boolean; chatError: string
   christmasSongs: ChristmasSong[]; musicLoading: boolean; musicError: string; musicBusy: boolean
   refresh: () => Promise<void>; change: (giftId: string, status: GiftStatus) => Promise<void>
   refreshSuggestions: () => Promise<void>
   submitSuggestion: (gift: GiftSuggestionInput) => Promise<boolean>
   reviewSuggestion: (id: string, status: 'approved' | 'denied') => Promise<boolean>
   addOwnerGift: (gift: GiftSuggestionInput) => Promise<boolean>
+  refreshChat: () => Promise<void>
+  sendChatMessage: (message: string) => Promise<boolean>
+  deleteChatMessage: (id: number) => Promise<boolean>
   refreshChristmasSongs: () => Promise<boolean>
   addChristmasSong: (song: ChristmasSongInput) => Promise<boolean>
 }
@@ -48,6 +52,10 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const [suggestionsLoading, setSuggestionsLoading] = useState(Boolean(client))
   const [suggestionsBusy, setSuggestionsBusy] = useState(false)
   const [suggestionsError, setSuggestionsError] = useState('')
+  const [chatMessages, setChatMessages] = useState<ShopperChatMessage[]>([])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatBusy, setChatBusy] = useState(false)
+  const [chatError, setChatError] = useState('')
   const [christmasSongs, setChristmasSongs] = useState<ChristmasSong[]>(builtInChristmasSongs)
   const [musicLoading, setMusicLoading] = useState(Boolean(client))
   const [musicError, setMusicError] = useState('')
@@ -56,10 +64,13 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const generation = useRef(0)
   const request = useRef(0)
   const suggestionRequest = useRef(0)
+  const chatRequest = useRef(0)
   const musicRequest = useRef(0)
   const musicLoaded = useRef(false)
+  const chatLoaded = useRef(false)
   const mutating = useRef(false)
   const suggestionMutation = useRef(false)
+  const chatMutation = useRef(false)
   const musicMutation = useRef(false)
 
   useEffect(() => {
@@ -70,13 +81,16 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       generation.current++
       request.current++
       suggestionRequest.current++
+      chatRequest.current++
       setSnapshot(null); setStale(true); setError(''); setSession(nextSession); setLoading(Boolean(nextSession))
       setBusyGift(null); mutating.current = false; suggestionMutation.current = false
       setApprovedIdeas([]); setSuggestions([]); setSuggestionsError(''); setSuggestionsLoading(Boolean(nextSession))
       setSuggestionsBusy(false)
+      setChatMessages([]); setChatError(''); setChatLoading(false); setChatBusy(false)
+      chatLoaded.current = false; chatMutation.current = false
       musicMutation.current = false; setMusicBusy(false)
     })
-    return () => { subscription.unsubscribe(); identity.current = null; generation.current++; request.current++; suggestionRequest.current++ }
+    return () => { subscription.unsubscribe(); identity.current = null; generation.current++; request.current++; suggestionRequest.current++; chatRequest.current++ }
   }, [])
 
   const refresh = useCallback(async () => {
@@ -97,6 +111,28 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (identity.current === account && generation.current === version && ticket === request.current) setLoading(false)
     }
   }, [session])
+
+  const refreshChat = useCallback(async () => {
+    if (!client || !session || snapshot?.role !== 'shopper') return
+    const account = session.user.id
+    const version = generation.current
+    const ticket = ++chatRequest.current
+    if (!chatLoaded.current) setChatLoading(true)
+    try {
+      const { data, error: failure } = await client.rpc('get_chat_messages').abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      const next = readShopperChatMessages(data)
+      if (identity.current !== account || generation.current !== version || ticket !== chatRequest.current) return
+      chatLoaded.current = true
+      setChatMessages(next)
+      setChatError('')
+    } catch {
+      if (identity.current !== account || generation.current !== version || ticket !== chatRequest.current) return
+      setChatError('The shopper chat could not be loaded. Please try again.')
+    } finally {
+      if (identity.current === account && generation.current === version && ticket === chatRequest.current) setChatLoading(false)
+    }
+  }, [session, snapshot?.role])
 
   const refreshSuggestions = useCallback(async () => {
     if (!client) return
@@ -154,10 +190,19 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session || snapshot?.role === 'owner') return
     const sync = () => { if (document.visibilityState === 'visible') void refresh() }
-    const interval = window.setInterval(sync, 5000)
+    const interval = window.setInterval(sync, 2000)
     window.addEventListener('focus', sync)
     document.addEventListener('visibilitychange', sync)
     return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
+  }, [session, snapshot?.role, refresh])
+
+  useEffect(() => {
+    const supabase = client
+    if (!supabase || !session || snapshot?.role !== 'shopper') return
+    const channel = supabase.channel('gift-claim-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gift_claim_updates' }, () => { void refresh() })
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
   }, [session, snapshot?.role, refresh])
 
   useEffect(() => {
@@ -168,6 +213,19 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', sync)
     return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
   }, [session, refreshSuggestions])
+
+  useEffect(() => {
+    if (!session || snapshot?.role !== 'shopper') {
+      setChatMessages([])
+      return
+    }
+    const sync = () => { if (document.visibilityState === 'visible') void refreshChat() }
+    sync()
+    const interval = window.setInterval(sync, 4000)
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
+  }, [session, snapshot?.role, refreshChat])
 
   useEffect(() => {
     const sync = () => { if (document.visibilityState === 'visible') void refreshChristmasSongs() }
@@ -267,6 +325,43 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
     }
   }
+
+  const sendChatMessage = async (message: string) => {
+    const cleanMessage = message.trim()
+    if (!client || !session || snapshot?.role !== 'shopper' || !cleanMessage || chatMutation.current) return false
+    const version = generation.current
+    chatMutation.current = true; setChatBusy(true); setChatError('')
+    try {
+      const { error: failure } = await client.rpc('send_chat_message', { p_message: cleanMessage }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      if (generation.current !== version) return false
+      await refreshChat()
+      return true
+    } catch {
+      if (generation.current === version) setChatError('Your message could not be sent. Please try again.')
+      return false
+    } finally {
+      if (generation.current === version) { chatMutation.current = false; setChatBusy(false) }
+    }
+  }
+
+  const deleteChatMessage = async (id: number) => {
+    if (!client || !session || snapshot?.role !== 'shopper' || chatMutation.current) return false
+    const version = generation.current
+    chatMutation.current = true; setChatBusy(true); setChatError('')
+    try {
+      const { error: failure } = await client.rpc('delete_chat_message', { p_id: id }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      if (generation.current !== version) return false
+      await refreshChat()
+      return true
+    } catch {
+      if (generation.current === version) setChatError('That message could not be deleted. Please refresh the chat and try again.')
+      return false
+    } finally {
+      if (generation.current === version) { chatMutation.current = false; setChatBusy(false) }
+    }
+  }
   const addChristmasSong = async (song: ChristmasSongInput) => {
     if (!client || !session || snapshot?.role !== 'owner' || musicMutation.current) return false
     const version = generation.current
@@ -293,6 +388,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     configured: Boolean(client), session, snapshot, loading, error, stale, busyGift, refresh, change,
     approvedIdeas, suggestions, suggestionsLoading, suggestionsBusy, suggestionsError,
     refreshSuggestions, submitSuggestion, reviewSuggestion, addOwnerGift,
+    chatMessages, chatLoading, chatBusy, chatError, refreshChat, sendChatMessage, deleteChatMessage,
     christmasSongs, musicLoading, musicError, musicBusy, refreshChristmasSongs, addChristmasSong,
   }}>{children}</Context.Provider>
 }
@@ -302,7 +398,15 @@ export function GiftClaimBadge({ giftId }: { giftId: string }) {
   if (snapshot?.role !== 'shopper') return null
   const claim = snapshot.gifts.find(gift => gift.giftId === giftId)
   if (!claim || stale) return <span className="claim-badge">Status unavailable</span>
-  return <span className={`claim-badge claim-${claim.status}`}>{claim.status === 'available' ? 'Available to gift' : claim.status === 'bought' ? (claim.mine ? 'You bought this' : 'Already bought') : (claim.mine ? 'You’re considering this' : 'Someone is considering this')}</span>
+  return <span className={`claim-badge claim-${claim.status}`}>{claim.status === 'available' ? 'Available to gift' : claim.status === 'bought' ? (claim.mine ? 'You bought this' : `Bought by ${claim.buyerName ?? 'a shopper'}`) : (claim.mine ? 'You’re considering this' : 'Someone is considering this')}</span>
+}
+
+export function GiftBoughtOverlay({ giftId }: { giftId: string }) {
+  const { snapshot, stale } = useCoordination()
+  if (stale || snapshot?.role !== 'shopper') return null
+  const claim = snapshot.gifts.find(gift => gift.giftId === giftId)
+  if (!claim || claim.status !== 'bought') return null
+  return <span className="gift-bought-overlay">{claim.mine ? 'Bought by you' : `Bought by ${claim.buyerName ?? 'a shopper'}`}</span>
 }
 
 export function GiftClaimControls({ giftId }: { giftId: string }) {
@@ -319,7 +423,7 @@ export function GiftClaimControls({ giftId }: { giftId: string }) {
         {claim.status !== 'considering' && <button className="outline-button" disabled={disabled} onClick={() => void change(giftId, 'considering')}>{claim.status === 'bought' ? 'Change to considering' : 'I’m considering this'}</button>}
         {claim.status !== 'bought' && <button className="primary-button" disabled={disabled} onClick={() => void change(giftId, 'bought')}>I bought this</button>}
         {claim.mine && <button className="text-button" disabled={disabled} onClick={() => void change(giftId, 'available')}>Release my claim</button>}
-      </div><p className="claim-hint">Other shoppers can see the status. { /* No buyer identities are shared. */ }Purchase details stay hidden from the list owner.</p>
+      </div><p className="claim-hint">Other shoppers can see the status and buyer name. Purchase details stay hidden from the list owner.</p>
     </> : <p className="claim-hint">Another shopper has this covered. Try a different gift to avoid a duplicate.</p>}
     {busyGift === giftId && <p role="status">Saving your choice…</p>}
     {error && <p role="alert" className="coordination-error">{error}</p>}

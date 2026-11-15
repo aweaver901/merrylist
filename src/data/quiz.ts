@@ -9,3 +9,11 @@ export function matchGifts(answers: string[], giftList = gifts) {
     return { gift, reasons, score: reasons.length }
   }).sort((a, b) => b.score - a.score || a.gift.cost - b.gift.cost || a.gift.id.localeCompare(b.gift.id))
 }
+
+export function excludeBoughtGifts<T extends { id: string }>(
+  giftList: T[],
+  claims: { giftId: string; status: string }[],
+) {
+  const boughtIds = new Set(claims.filter(claim => claim.status === 'bought').map(claim => claim.giftId))
+  return giftList.filter(gift => !boughtIds.has(gift.id))
+}

@@ -16,7 +16,7 @@ function load(filename) {
   return module.exports
 }
 const { quizQuestions, gifts } = load('src/data/gifts.ts')
-const { matchGifts } = load('src/data/quiz.ts')
+const { matchGifts, excludeBoughtGifts } = load('src/data/quiz.ts')
 for (const gift of gifts) {
   assert.ok(gift.image.startsWith('/gifts/'), 'Product photos must use local assets')
   const file = path.resolve(__dirname, '..', 'public', gift.image.slice(1))
@@ -40,4 +40,10 @@ for (const budget of quizQuestions[0].options) {
 }
 assert.equal(matchGifts(['any', 'useful', 'road'])[0].score, 2)
 assert.equal(matchGifts(['25', 'fun', 'discover'])[0].gift.theme, 'Books')
+const excludingBought = excludeBoughtGifts(gifts, [
+  { giftId: gifts[0].id, status: 'bought' },
+  { giftId: gifts[1].id, status: 'considering' },
+])
+assert.ok(!excludingBought.some(gift => gift.id === gifts[0].id), 'Exclude items marked bought from the quiz')
+assert.ok(excludingBought.some(gift => gift.id === gifts[1].id), 'Keep items that are only being considered')
 console.log(`Quiz checks passed for all ${count} answer combinations.`)

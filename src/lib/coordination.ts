@@ -6,13 +6,14 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 export const coordinationClient = url && key ? createClient(url, key) : null
 
 export type GiftStatus = 'available' | 'considering' | 'bought'
-export type Claim = { giftId: string; status: GiftStatus; mine: boolean; revision: number }
+export type Claim = { giftId: string; status: GiftStatus; mine: boolean; revision: number; buyerName: string | null }
 export type CoordinationSnapshot = { role: 'owner' | 'shopper' | 'unconfigured' | 'unverified' | 'guest'; gifts: Claim[] }
 export type GiftSuggestionStatus = 'pending' | 'approved' | 'denied'
 export type GiftSuggestion = { id: string; status: GiftSuggestionStatus; createdAt: string; gift: Gift }
 export type GiftSuggestionInput = Omit<Gift, 'id' | 'image'> & { image: string }
 export type ChristmasSong = { id: string; title: string; artist: string; audioUrl: string; sourceUrl: string }
 export type ChristmasSongInput = Omit<ChristmasSong, 'id'>
+export type ShopperChatMessage = { id: number; senderName: string; message: string; createdAt: string; mine: boolean }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object')
@@ -74,6 +75,27 @@ export function readChristmasSongs(value: unknown): ChristmasSong[] {
   })
 }
 
+export function readShopperChatMessages(value: unknown): ShopperChatMessage[] {
+  if (!Array.isArray(value)) throw new Error('Invalid chat response')
+  return value.map((entry): ShopperChatMessage => {
+    if (!isRecord(entry) ||
+        typeof entry.id !== 'number' || !Number.isSafeInteger(entry.id) ||
+        typeof entry.senderName !== 'string' || !entry.senderName.trim() ||
+        typeof entry.message !== 'string' || !entry.message.trim() ||
+        typeof entry.createdAt !== 'string' || !Number.isFinite(Date.parse(entry.createdAt)) ||
+        typeof entry.mine !== 'boolean') {
+      throw new Error('Invalid chat response')
+    }
+    return {
+      id: entry.id,
+      senderName: entry.senderName,
+      message: entry.message,
+      createdAt: entry.createdAt,
+      mine: entry.mine,
+    }
+  })
+}
+
 function isHttpsUrl(value: string) {
   try { return new URL(value).protocol === 'https:' } catch { return false }
 }
@@ -84,6 +106,6 @@ export function readSnapshot(value: unknown): CoordinationSnapshot {
   if (!['owner', 'shopper', 'unconfigured', 'unverified', 'guest'].includes(String(role)) || !Array.isArray(gifts)) throw new Error('Invalid coordination response')
   // Defensive client boundary; the database also excludes all owner purchase data.
   if (role !== 'shopper') return { role: role as CoordinationSnapshot['role'], gifts: [] }
-  if (!gifts.every(gift => gift && typeof gift.giftId === 'string' && ['available', 'considering', 'bought'].includes(gift.status) && typeof gift.mine === 'boolean' && Number.isInteger(gift.revision))) throw new Error('Invalid coordination response')
+  if (!gifts.every(gift => gift && typeof gift.giftId === 'string' && ['available', 'considering', 'bought'].includes(gift.status) && typeof gift.mine === 'boolean' && Number.isInteger(gift.revision) && (gift.buyerName === null || (typeof gift.buyerName === 'string' && gift.buyerName.length <= 80)) && (gift.status === 'bought' || gift.buyerName === null))) throw new Error('Invalid coordination response')
   return { role: 'shopper', gifts }
 }

@@ -10,15 +10,15 @@ const unverified = '00000000-0000-0000-0000-000000000004'
 await db.exec(`
   create role anon; create role authenticated;
   create schema auth;
-  create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz);
+  create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz, raw_user_meta_data jsonb not null default '{}'::jsonb);
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to authenticated, anon;
   grant execute on function auth.uid() to authenticated, anon;
 `)
 await db.exec(await readFile(new URL('../supabase/migrations/202611140001_gift_coordination.sql', import.meta.url), 'utf8'))
-for (const [id, email, confirmed] of [[owner, 'aweaver901@gmail.com', true], [first, 'one@example.com', true], [second, 'two@example.com', true], [unverified, 'unverified@example.com', false]]) {
-  await db.query('insert into auth.users values ($1, $2, $3)', [id, email, confirmed ? new Date().toISOString() : null])
+for (const [id, email, confirmed, name] of [[owner, 'aweaver901@gmail.com', true, 'Austin'], [first, 'one@example.com', true, 'First Shopper'], [second, 'two@example.com', true, 'Second Shopper'], [unverified, 'unverified@example.com', false, 'Unverified']]) {
+  await db.query('insert into auth.users values ($1, $2, $3, jsonb_build_object(\'full_name\', $4::text))', [id, email, confirmed ? new Date().toISOString() : null, name])
 }
 await db.exec(await readFile(new URL('../supabase/seed.sql', import.meta.url), 'utf8'))
 async function asUser(id, fn) {
@@ -45,7 +45,11 @@ const submitIdea = (name = 'A thoughtful new gift') => db.query(
   [name, 34.5, 'Books', 'https://example.com/gift', 'A useful book.', null, 'A lovely idea.', ['book', 'thoughtful']],
 )
 const reviewIdea = (id, status) => db.query('select public.review_gift_idea($1, $2)', [id, status])
+const getChatMessages = async () => (await db.query('select public.get_chat_messages() as result')).rows[0].result
+const sendChatMessage = message => db.query('select public.send_chat_message($1) as id', [message])
+const deleteChatMessage = id => db.query('select public.delete_chat_message($1)', [id])
 const denied = async (fn, code) => assert.rejects(fn, error => error.code === code)
+let firstChatMessageId
 
 // No role configuration must never accidentally expose purchase data.
 await asUser(first, async () => assert.deepEqual(await snapshot(), { role: 'unconfigured', gifts: [] }))
@@ -53,6 +57,7 @@ await db.exec(await readFile(new URL('../supabase/setup-owner.sql', import.meta.
 await db.exec(await readFile(new URL('../supabase/migrations/202611140002_gift_ideas.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611140003_christmas_songs.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611150001_owner_gifts.sql', import.meta.url), 'utf8'))
+await db.exec(await readFile(new URL('../supabase/migrations/202611150002_shopper_chat_and_purchase_names.sql', import.meta.url), 'utf8'))
 await asUser(null, () => denied(snapshot, '42501'))
 await asUser(unverified, async () => {
   assert.deepEqual(await snapshot(), { role: 'unverified', gifts: [] })
@@ -67,6 +72,8 @@ await asUser(null, async () => {
   assert.equal(songs[0].title, 'Jingle Bells')
   await denied(addChristmasSong, '42501')
   await denied(addOwnerGift, '42501')
+  await denied(getChatMessages, '42501')
+  await denied(() => sendChatMessage('No guest messages'), '42501')
 })
 await asUser(first, async () => {
   await denied(() => db.query('select * from merrylist_private.claims'), '42501')
@@ -81,13 +88,26 @@ await asUser(first, async () => {
   assert.equal(before.gifts.length, 23)
   await change('black-slides', 'considering', 0)
   const claim = (await snapshot()).gifts.find(gift => gift.giftId === 'black-slides')
-  assert.deepEqual(claim, { giftId: 'black-slides', status: 'considering', mine: true, revision: 1 })
+  assert.deepEqual(claim, { giftId: 'black-slides', status: 'considering', mine: true, revision: 1, buyerName: null })
   assert.ok(!JSON.stringify(await snapshot()).includes('one@example.com'))
+  const realtimeClaim = (await db.query("select status, buyer_name from public.gift_claim_updates where gift_id = 'black-slides'")).rows[0]
+  assert.deepEqual(realtimeClaim, { status: 'considering', buyer_name: null })
+  firstChatMessageId = (await sendChatMessage('Hello from the first shopper')).rows[0].id
+  const messages = await getChatMessages()
+  assert.deepEqual(messages, [{ id: Number(firstChatMessageId), senderName: 'First Shopper', message: 'Hello from the first shopper', createdAt: messages[0].createdAt, mine: true }])
+  await denied(() => sendChatMessage('   '), '22023')
+  await denied(() => sendChatMessage('x'.repeat(2001)), '22023')
 })
 await asUser(second, async () => {
   const other = (await snapshot()).gifts.find(gift => gift.giftId === 'black-slides')
   assert.equal(other.mine, false)
   assert.equal(other.status, 'considering')
+  assert.equal(other.buyerName, null)
+  const messages = await getChatMessages()
+  assert.equal(messages[0].senderName, 'First Shopper')
+  assert.equal(messages[0].mine, false)
+  await denied(() => deleteChatMessage(firstChatMessageId), '40001')
+  await sendChatMessage('Hello back')
   // A simultaneous stale first claim loses. Even a refreshed visitor cannot steal it.
   await denied(() => change('black-slides', 'bought', 0), '40001')
   await denied(() => change('black-slides', 'bought', 1), '40001')
@@ -95,6 +115,9 @@ await asUser(second, async () => {
 })
 await asUser(owner, async () => {
   assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] })
+  assert.deepEqual((await db.query('select gift_id from public.gift_claim_updates')).rows, [])
+  await denied(getChatMessages, '42501')
+  await denied(() => sendChatMessage('Owner is excluded'), '42501')
   await denied(() => change('black-slides', 'available', 1), '42501')
   await denied(() => db.query('select * from merrylist_private.claims'), '42501')
   await denied(() => db.query('select * from merrylist_private.gift_ideas'), '42501')
@@ -164,8 +187,17 @@ await asUser(first, async () => {
 })
 await asUser(second, async () => {
   await change('black-slides', 'bought', 4)
+  const boughtClaim = (await snapshot()).gifts.find(gift => gift.giftId === 'black-slides')
+  assert.deepEqual(boughtClaim, { giftId: 'black-slides', status: 'bought', mine: true, revision: 5, buyerName: 'Second Shopper' })
+  assert.deepEqual((await db.query("select status, buyer_name from public.gift_claim_updates where gift_id = 'black-slides'")).rows[0], { status: 'bought', buyer_name: 'Second Shopper' })
   await denied(() => change('not-a-gift', 'bought', 0), '22023')
   await denied(() => change('black-slides', 'nonsense', 5), '22023')
+})
+await asUser(first, async () => {
+  const messages = await getChatMessages()
+  await deleteChatMessage(firstChatMessageId)
+  assert.ok(!(await getChatMessages()).some(message => message.id === Number(firstChatMessageId)))
+  assert.ok(messages.some(message => message.message === 'Hello from the first shopper'))
 })
 await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] }))
 await asUser(owner, async () => {
@@ -192,4 +224,4 @@ await asUser(first, async () => {
 await db.query('update auth.users set email = $1 where id = $2', ['owner-new@example.com', owner])
 await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] }))
 await db.close()
-console.log('Database checks passed: owner privacy, claims, gift review, direct owner gift publishing, and music management.')
+console.log('Database checks passed: purchase privacy, secured claim updates, shopper chat, gift review, owner gift publishing, and music management.')

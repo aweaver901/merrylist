@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ArrowUpRight, ChevronRight, RotateCcw, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { listContent, quizQuestions, type Gift } from './data/gifts'
-import { matchGifts } from './data/quiz'
+import { excludeBoughtGifts, matchGifts } from './data/quiz'
 import { useCoordination } from './Coordination'
 
 const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
@@ -21,11 +21,8 @@ export default function QuizModal({ gifts, onClose, onOpenGift }: { gifts: Gift[
   const { snapshot } = useCoordination()
   const complete = step === quizQuestions.length
   const question = quizQuestions[step]
-  const matches = complete ? matchGifts(answers, gifts).filter(({ gift }) => {
-    if (snapshot?.role !== 'shopper') return true
-    const claim = snapshot.gifts.find(item => item.giftId === gift.id)
-    return claim?.status === 'available' || claim?.mine
-  }) : []
+  const quizGifts = snapshot?.role === 'shopper' ? excludeBoughtGifts(gifts, snapshot.gifts) : gifts
+  const matches = complete ? matchGifts(answers, quizGifts) : []
   const safeResultIndex = matches.length ? resultIndex % matches.length : 0
   const match = matches[safeResultIndex]
 

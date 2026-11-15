@@ -10,8 +10,9 @@ Use an administrator database connection or the Supabase SQL editor to run these
 2. `migrations/202611140002_gift_ideas.sql`
 3. `migrations/202611140003_christmas_songs.sql`
 4. `migrations/202611150001_owner_gifts.sql`
-5. `seed.sql` (if not already applied)
-6. `setup-owner.sql` (if not already applied)
+5. `migrations/202611150002_shopper_chat_and_purchase_names.sql`
+6. `seed.sql` (if not already applied)
+7. `setup-owner.sql` (if not already applied)
 
 The owner email has been set to the address Austin provided. Keep this setting server-side. The owner is bound to their stable account ID after email verification, so changing their email later will not reveal purchase statuses. Without owner configuration, all coordination requests fail closed with no gift statuses.
 
@@ -65,9 +66,10 @@ Use only the publishable key. Never put a service-role key, database password, o
 ## Behavior and privacy
 
 - Anyone can browse the wish list. Sign-in is required to see coordination status and to use retailer links once coordination is enabled. The owner retains ordinary retailer links.
-- Shoppers see Available, Considering, and Bought; the claimant can change or release their own claim. Another shopper cannot claim or modify it.
+- Shoppers see Available, Considering, and Bought; the claimant can change or release their own claim. When marked Bought, other shoppers see the buyer's Google profile name. The owner still sees no purchase status or identity.
 - Considering reserves one gift until explicitly released; it does not expire automatically. Bought means the shopper marked it bought, not that a retailer confirmed payment.
-- Shopper status refreshes every five seconds while the tab is visible, on focus, and after changes. This is polling, not a Realtime subscription. The UI offers manual refresh and disables actions when the status cannot be checked.
+- Shopper status subscribes to a row-secured Realtime update and also polls every two seconds while the tab is visible, on focus, and after changes. A newly bought gift is highlighted on shopper pages with an in-page notice. Actual delivery time depends on Supabase Realtime and network latency; polling is the fallback. The UI offers manual refresh and disables actions when the status cannot be checked.
+- Signed-in shoppers can use the private group chat. The configured owner account cannot read or post in chat. Messages are stored until their sender deletes them, and chat refreshes every four seconds while visible.
 - Signed-in shoppers can submit gift name, price, category, retailer link, description, personal recommendation, optional HTTPS photo URL, and tags. Suggestions are private to the submitter and owner while pending; submitters can see their own review status.
 - The owner sees an in-app pending count and can approve or decline suggestions. The list refreshes every 15 seconds while the owner is signed in, on focus, and on request. No email or browser-notification service is configured.
 - Approved ideas become public gift cards, appear in the quiz, and enter the shared coordination catalog. Declined ideas remain private to the submitter. Images use optional HTTPS URLs; uploaded files and image hosting are not part of this feature.
@@ -75,7 +77,7 @@ Use only the publishable key. Never put a service-role key, database password, o
 - The signed-in owner can add songs to the public playlist from the record player. Track metadata and HTTPS audio/source URLs are stored in the private database schema; anonymous visitors can read the playlist only through a narrow public RPC.
 - The database serializes changes per gift and checks a revision number. Two shoppers acting on the same old availability cannot both succeed.
 - All claim tables live in an unexposed private schema, with row-level security and no browser grants. The browser can call only the narrowly scoped public RPCs.
-- Owner RPC responses contain no statuses, buyer identities, timestamps, counts, or revisions. The owner sees all gifts and unchanged quiz candidates; the app does not reveal claims through hidden or removed gifts. Shoppers' quiz results exclude gifts claimed by others.
+- Owner RPC responses contain no statuses, buyer identities, timestamps, counts, or revisions. The owner sees all gifts and unchanged quiz candidates; the app does not reveal claims through hidden or removed gifts. Shopper quiz results exclude gifts marked bought.
 - This protects surprises in the application for the configured owner account. A database administrator can inspect database records, and a separately registered shopper account is treated as a shopper.
 
 ## Validation

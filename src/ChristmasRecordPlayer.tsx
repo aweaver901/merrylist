@@ -1,4 +1,5 @@
-import { ChevronDown, Disc3, GripVertical, Pause, Play, SkipBack, SkipForward, Volume2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Disc3, GripVertical, Pause, Play, SkipBack, SkipForward, Volume2 } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
 import { useCoordination } from './Coordination'
 import type { ChristmasSongInput } from './lib/coordination'
@@ -12,7 +13,9 @@ function RecordDisc({ playing = false }: { playing?: boolean }) {
 export default function ChristmasRecordPlayer() {
   const { configured, session, snapshot, christmasSongs, musicLoading, musicError, musicBusy, addChristmasSong } = useCoordination()
   const [expanded, setExpanded] = useState(false)
-  const [dockSide, setDockSide] = useState<'left' | 'right'>('left')
+  const reducedMotion = useReducedMotion()
+  const [dockEdge, setDockEdge] = useState<'left' | 'right' | 'top' | 'bottom'>('bottom')
+  const [edgeOffset, setEdgeOffset] = useState(180)
   const [dragPosition, setDragPosition] = useState<{ left: number; top: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [trackIndex, setTrackIndex] = useState(0)
@@ -58,18 +61,70 @@ export default function ChristmasRecordPlayer() {
     const player = playerElement.current
     if (!offset || offset.pointerId !== event.pointerId || !player) return
     const left = Math.max(8, Math.min(window.innerWidth - player.offsetWidth - 8, event.clientX - offset.x))
-    setDockSide(left + player.offsetWidth / 2 < window.innerWidth / 2 ? 'left' : 'right')
+    const top = Math.max(8, Math.min(window.innerHeight - player.offsetHeight - 8, event.clientY - offset.y))
+    const distances = [
+      { edge: 'left' as const, distance: left },
+      { edge: 'right' as const, distance: window.innerWidth - left - player.offsetWidth },
+      { edge: 'top' as const, distance: top },
+      { edge: 'bottom' as const, distance: window.innerHeight - top - player.offsetHeight },
+    ]
+    const nearest = distances.reduce((best, candidate) => candidate.distance < best.distance ? candidate : best)
+    setDockEdge(nearest.edge)
+    setEdgeOffset(nearest.edge === 'left' || nearest.edge === 'right' ? top + player.offsetHeight / 2 : left + player.offsetWidth / 2)
     dragOffset.current = null
     setDragPosition(null)
     setDragging(false)
   }
 
   const moveByKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'ArrowLeft') setDockSide('left')
-    else if (event.key === 'ArrowRight') setDockSide('right')
-    else return
+    const edges = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'top', ArrowDown: 'bottom' } as const
+    const nextEdge = edges[event.key as keyof typeof edges]
+    if (!nextEdge) return
+    const currentLength = dockEdge === 'left' || dockEdge === 'right' ? window.innerHeight : window.innerWidth
+    const nextLength = nextEdge === 'left' || nextEdge === 'right' ? window.innerHeight : window.innerWidth
+    setEdgeOffset(edgeOffset / currentLength * nextLength)
+    setDockEdge(nextEdge)
     event.preventDefault()
   }
+
+  useEffect(() => {
+    const syncPosition = () => {
+      const player = playerElement.current
+      if (!player || dragging || dragPosition) return
+      const horizontalEdge = dockEdge === 'top' || dockEdge === 'bottom'
+      const extent = horizontalEdge ? player.offsetWidth : player.offsetHeight
+      const available = horizontalEdge ? window.innerWidth : window.innerHeight
+      const minimum = Math.min(extent / 2 + 12, available / 2)
+      setEdgeOffset(current => Math.max(minimum, Math.min(available - minimum, current)))
+    }
+    syncPosition()
+    window.addEventListener('resize', syncPosition)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncPosition)
+    if (observer && playerElement.current) observer.observe(playerElement.current)
+    return () => {
+      window.removeEventListener('resize', syncPosition)
+      observer?.disconnect()
+    }
+  }, [dockEdge, dragPosition, dragging, expanded])
+
+  const dockStyle = dragPosition
+    ? { left: dragPosition.left, top: dragPosition.top, right: 'auto', bottom: 'auto', transform: 'none' }
+    : dockEdge === 'left'
+      ? { left: 12, top: edgeOffset, right: 'auto', bottom: 'auto', transform: 'translateY(-50%)' }
+      : dockEdge === 'right'
+        ? { left: 'auto', top: edgeOffset, right: 12, bottom: 'auto', transform: 'translateY(-50%)' }
+        : dockEdge === 'top'
+          ? { left: edgeOffset, top: 12, right: 'auto', bottom: 'auto', transform: 'translateX(-50%)' }
+          : { left: edgeOffset, top: 'auto', right: 'auto', bottom: 12, transform: 'translateX(-50%)' }
+  const openIcon = dockEdge === 'left' ? <ChevronRight size={17} /> : dockEdge === 'right' ? <ChevronLeft size={17} /> : dockEdge === 'top' ? <ChevronDown size={17} /> : <ChevronUp size={17} />
+  const pauseWhenLeaving = useCallback(() => {
+    const audio = audioElement.current
+    if (!audio || !playingRef.current) return
+    generation.current++
+    audio.pause()
+    playingRef.current = false
+    setIsPlaying(false)
+  }, [])
 
   const playTrack = useCallback(async (index: number) => {
     const token = ++generation.current
@@ -117,17 +172,26 @@ export default function ChristmasRecordPlayer() {
         if (songs.length) void playTrackRef.current((activeTrackIndex.current + 1) % songs.length)
       }
     }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') pauseWhenLeaving()
+    }
     audio.addEventListener('ended', handleEnded)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', pauseWhenLeaving)
+    window.addEventListener('blur', pauseWhenLeaving)
     return () => {
       generation.current++
       playingRef.current = false
       audio.removeEventListener('ended', handleEnded)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', pauseWhenLeaving)
+      window.removeEventListener('blur', pauseWhenLeaving)
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
       audioElement.current = null
     }
-  }, [])
+  }, [pauseWhenLeaving])
 
   useEffect(() => {
     if (audioElement.current) audioElement.current.volume = volume
@@ -208,15 +272,23 @@ export default function ChristmasRecordPlayer() {
 
   return <aside
     ref={playerElement}
-    className={`record-player record-player-docked-${dockSide} ${expanded ? 'record-player-expanded' : 'record-player-collapsed'} ${dragging ? 'is-dragging' : ''}`}
-    style={dragPosition ? { left: dragPosition.left, top: dragPosition.top, right: 'auto', bottom: 'auto' } : undefined}
+    className={`record-player record-player-edge-${dockEdge} ${expanded ? 'record-player-expanded' : 'record-player-collapsed'} ${dragging ? 'is-dragging' : ''}`}
+    style={dockStyle}
     aria-label="Christmas record player"
   >
-    {expanded ? <div className="record-player-panel">
+    <AnimatePresence initial={false} mode="wait">
+    {expanded ? <motion.div
+      key="expanded"
+      className="record-player-panel"
+      initial={{ opacity: 0, x: reducedMotion ? 0 : dockEdge === 'left' ? -14 : dockEdge === 'right' ? 14 : 0, y: reducedMotion ? 0 : dockEdge === 'top' ? -14 : dockEdge === 'bottom' ? 14 : 0 }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
+      exit={{ opacity: 0, x: reducedMotion ? 0 : dockEdge === 'left' ? -14 : dockEdge === 'right' ? 14 : 0, y: reducedMotion ? 0 : dockEdge === 'top' ? -14 : dockEdge === 'bottom' ? 14 : 0 }}
+      transition={{ duration: reducedMotion ? 0 : .18 }}
+    >
       <header className="record-player-header">
         <div><p className="record-player-kicker"><Disc3 size={14} /> MERRYLIST RADIO</p><span>Real recordings · public-domain carols</span></div>
         <div className="record-player-header-actions">
-          <button className="record-player-icon-button record-player-drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={moveByKeyboard} aria-label="Move record player; drag to a bottom corner or press an arrow key"><GripVertical size={17} /></button>
+          <button className="record-player-icon-button record-player-drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={moveByKeyboard} aria-label="Move record player; drag to any screen edge or use arrow keys"><GripVertical size={17} /></button>
           <button className="record-player-icon-button" onClick={() => setExpanded(false)} aria-label="Minimize record player"><ChevronDown size={18} /></button>
         </div>
       </header>
@@ -260,13 +332,20 @@ export default function ChristmasRecordPlayer() {
         </form>}
       </section>}
       {songMessage && <p className="claim-hint" role="status">{songMessage}</p>}
-    </div> : <div className="record-player-mini">
+    </motion.div> : <motion.div
+      key="collapsed"
+      className="record-player-mini"
+      initial={{ opacity: 0, scale: reducedMotion ? 1 : .9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: reducedMotion ? 1 : .9 }}
+      transition={{ duration: reducedMotion ? 0 : .15 }}
+    >
       <button className="record-player-open" onClick={() => setExpanded(true)} aria-label="Open Christmas record player">
-        <RecordDisc playing={isPlaying} /><span><strong>Holiday record player</strong><small>{song ? `${isPlaying ? 'Now playing' : 'Pick a carol'} · ${song.title}` : musicLoading ? 'Loading songs…' : 'No songs available'}</small></span>
+        <RecordDisc playing={isPlaying} /><span className="visually-hidden">Open holiday record player</span>{openIcon}
       </button>
-      <button className="record-player-icon-button record-player-drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={moveByKeyboard} aria-label="Move record player; drag to a bottom corner or press an arrow key"><GripVertical size={17} /></button>
-      <button className="record-player-play mini-play" disabled={!song} onClick={() => void togglePlayback()} aria-label={isPlaying ? 'Pause Christmas music' : 'Play Christmas music'}>{isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}</button>
-    </div>}
+      <button className="record-player-icon-button record-player-drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={moveByKeyboard} aria-label="Move record player; drag to any screen edge or use arrow keys"><GripVertical size={17} /></button>
+    </motion.div>}
+    </AnimatePresence>
   </aside>
 }
 

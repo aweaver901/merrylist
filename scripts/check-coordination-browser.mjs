@@ -54,12 +54,13 @@ try {
   const suggestions = []
   const approvedIdeas = []
   const addedSongs = []
+  const chatMessages = []
   let nextIdeaId = 0
   let nextOwnerGiftId = 0
   let nextEmail = 'shopper@example.com'
   let cancelSignIn = true
   let oauthRequests = 0
-  const user = () => ({ id: email.startsWith('owner') ? '00000000-0000-0000-0000-000000000001' : '00000000-0000-0000-0000-000000000002', aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: new Date().toISOString(), app_metadata: { provider: 'google', providers: ['google'] }, user_metadata: {} })
+  const user = () => ({ id: email.startsWith('owner') ? '00000000-0000-0000-0000-000000000001' : '00000000-0000-0000-0000-000000000002', aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: new Date().toISOString(), app_metadata: { provider: 'google', providers: ['google'] }, user_metadata: { full_name: email.startsWith('owner') ? 'Owner Example' : 'Shopper Example' } })
   await page.route('https://merrylist-test.supabase.co/**', async route => {
     const url = route.request().url()
     if (url.includes('/authorize')) {
@@ -78,9 +79,26 @@ try {
     if (url.includes('/user')) return route.fulfill({ json: user() })
     if (url.includes('/rpc/gift_coordination')) {
       if (offline) return route.fulfill({ status: 503, json: { message: 'Unavailable' } })
-      return route.fulfill({ json: { role: email.startsWith('owner') ? 'owner' : 'shopper', gifts: [...gifts, ...approvedIdeas].map(gift => ({ giftId: gift.id, status: gift.id === 'black-slides' ? status : 'available', revision: gift.id === 'black-slides' ? revision : 0, mine: gift.id === 'black-slides' && status !== 'available' && mine })) } })
+      return route.fulfill({ json: { role: email.startsWith('owner') ? 'owner' : 'shopper', gifts: [...gifts, ...approvedIdeas].map(gift => {
+        const giftStatus = gift.id === 'black-slides' ? status : 'available'
+        const giftMine = gift.id === 'black-slides' && giftStatus !== 'available' && mine
+        return { giftId: gift.id, status: giftStatus, revision: gift.id === 'black-slides' ? revision : 0, mine: giftMine, buyerName: giftStatus === 'bought' ? (giftMine ? 'Shopper Example' : 'Jordan Shopper') : null }
+      }) } })
     }
     if (url.includes('/rpc/approved_gift_ideas')) return route.fulfill({ json: approvedIdeas })
+    if (url.includes('/rpc/get_chat_messages')) return route.fulfill({ json: chatMessages.map(message => ({ ...message, mine: message.sender === email })) })
+    if (url.includes('/rpc/send_chat_message')) {
+      const input = route.request().postDataJSON()
+      chatMessages.push({ id: chatMessages.length + 1, sender: email, senderName: user().user_metadata.full_name, message: input.p_message, createdAt: new Date().toISOString() })
+      return route.fulfill({ json: chatMessages.length })
+    }
+    if (url.includes('/rpc/delete_chat_message')) {
+      const input = route.request().postDataJSON()
+      const index = chatMessages.findIndex(message => message.id === input.p_id && message.sender === email)
+      if (index < 0) return route.fulfill({ status: 409, json: { message: 'Message not found' } })
+      chatMessages.splice(index, 1)
+      return route.fulfill({ json: null })
+    }
     if (url.includes('/rpc/christmas_songs')) {
       if (musicUnavailable) return route.fulfill({ status: 503, json: { message: 'Unavailable' } })
       return route.fulfill({ json: addedSongs })
@@ -146,6 +164,13 @@ try {
   await expect(page.locator('.gift-card')).toHaveCount(23)
   await expect(page.locator('.claim-badge')).toHaveCount(0)
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
+  expect(await page.locator('.hero-caption').evaluate(element => getComputedStyle(element).zIndex)).toBe('3')
+  const hiddenLabelStyle = await page.locator('.record-player-open .visually-hidden').evaluate(element => {
+    const style = getComputedStyle(element)
+    return { position: style.position, width: style.width, height: style.height, clip: style.clip }
+  })
+  expect(hiddenLabelStyle).toMatchObject({ position: 'absolute', width: '1px', height: '1px' })
+  expect(hiddenLabelStyle.clip).toContain('0px')
   const viewport = page.viewportSize()
   const dragHandle = page.getByRole('button', { name: /Move record player/ })
   const handleBounds = await dragHandle.boundingBox()
@@ -155,14 +180,40 @@ try {
   await page.mouse.up()
   const rightDock = await page.locator('.record-player').boundingBox()
   expect(rightDock.x).toBeGreaterThan(viewport.width / 2)
-  expect(Math.abs(rightDock.y + rightDock.height - viewport.height + 20)).toBeLessThan(2)
+  expect(Math.abs(rightDock.y + rightDock.height / 2 - viewport.height / 2)).toBeLessThan(2)
   await dragHandle.focus()
   await dragHandle.press('ArrowLeft')
   const leftDock = await page.locator('.record-player').boundingBox()
   expect(leftDock.x).toBeLessThan(viewport.width / 2)
+  await dragHandle.press('ArrowUp')
+  expect((await page.locator('.record-player').boundingBox()).y).toBeLessThan(viewport.height / 2)
+  await dragHandle.press('ArrowDown')
+  expect((await page.locator('.record-player').boundingBox()).y).toBeGreaterThan(viewport.height / 2)
   await page.getByRole('button', { name: 'Open Christmas record player' }).click()
+  const assertPlayerInsideViewport = async () => {
+    await page.waitForFunction(() => {
+      const bounds = document.querySelector('.record-player')?.getBoundingClientRect()
+      return bounds && bounds.left >= 0 && bounds.top >= 0 && bounds.right <= window.innerWidth && bounds.bottom <= window.innerHeight
+    }, null, { timeout: 3000 })
+  }
+  await assertPlayerInsideViewport()
+  await page.setViewportSize({ width: 320, height: 480 })
+  await page.getByRole('button', { name: /Move record player/ }).focus()
+  await page.getByRole('button', { name: /Move record player/ }).press('ArrowRight')
+  await assertPlayerInsideViewport()
+  await expect(page.getByRole('button', { name: 'Minimize record player' })).toBeVisible()
+  await page.setViewportSize(viewport)
+  await assertPlayerInsideViewport()
   await expect(page.getByLabel('Choose a carol').locator('option')).toHaveCount(6)
   await expect(page.locator('.record-player-error')).toContainText('The online playlist is unavailable')
+  await page.getByRole('button', { name: 'Play Christmas music' }).click()
+  await expect(page.locator('.record-player-status')).toHaveText('Playing · Jingle Bells')
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect(page.locator('.record-player-status')).toHaveText('Paused · Jingle Bells')
+  await page.evaluate(() => { delete document.visibilityState })
   await page.getByRole('button', { name: 'Play Christmas music' }).click()
   await expect(page.locator('.record-player-status')).toHaveText('Playing · Jingle Bells')
   expect(audioRequests.some(url => url.includes('Jingle_Bells'))).toBe(true)
@@ -192,6 +243,11 @@ try {
   }
   await signIn('shopper@example.com')
   await expect(page.getByText('Up to date', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Shopper chat' })).toBeVisible()
+  await page.getByLabel('Write a message').fill('I can coordinate here.')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.getByText('I can coordinate here.')).toBeVisible()
+  await expect(page.getByText('Shopper Example', { exact: true })).toBeVisible()
   const openPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
   if (await openPlayer.isVisible()) await openPlayer.click()
   await expect(page.getByRole('button', { name: 'Add a song' })).toHaveCount(0)
@@ -220,10 +276,18 @@ try {
   await page.getByRole('button', { name: 'Release my claim', exact: true }).click()
   await expect(page.locator('.gift-modal').getByText('Available to gift', { exact: true })).toBeVisible()
   // Another visitor's update arrives through the normal refresh mechanism.
+  const statusChangedAt = Date.now()
   status = 'considering'; mine = false; revision++
-  await expect(page.locator('.gift-modal').getByText('Someone is considering this', { exact: true })).toBeVisible({ timeout: 10000 })
+  await expect(page.locator('.gift-modal').getByText('Someone is considering this', { exact: true })).toBeVisible({ timeout: 5000 })
+  expect(Date.now() - statusChangedAt).toBeLessThan(4500)
   await expect(page.getByRole('button', { name: 'I bought this', exact: true })).toHaveCount(0)
   await expect(page.locator('.gift-modal').getByRole('link', { name: 'See the gift' })).toHaveCount(0)
+  status = 'bought'; revision++
+  const boughtChangedAt = Date.now()
+  await expect(page.locator('.gift-modal').getByText('Bought by Jordan Shopper', { exact: true })).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.gift-bought-overlay')).toContainText('Bought by Jordan Shopper')
+  await expect(page.getByRole('status').filter({ hasText: 'Draco Slides was just marked bought by Jordan Shopper' })).toBeVisible()
+  expect(Date.now() - boughtChangedAt).toBeLessThan(4500)
   await page.locator('.gift-modal').getByRole('button', { name: 'Close', exact: true }).click()
   // Offline state must not imply that a gift is free to claim.
   offline = true
@@ -237,6 +301,7 @@ try {
   await expect(page.locator('.claim-badge')).toHaveCount(0)
   await signIn('owner@example.com')
   await expect(page.getByText('Your surprises are safe', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Shopper chat' })).toHaveCount(0)
   const ownerOpenPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
   if (await ownerOpenPlayer.isVisible()) await ownerOpenPlayer.click()
   await expect(page.getByRole('button', { name: 'Add a song' })).toBeVisible()

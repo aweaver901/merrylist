@@ -1,10 +1,11 @@
 import AccountPanel from './AccountPanel'
-import { GiftClaimBadge, GiftClaimControls, GiftPurchaseLink, useCoordination } from './Coordination'
+import { GiftBoughtOverlay, GiftClaimBadge, GiftClaimControls, GiftPurchaseLink, useCoordination } from './Coordination'
 import ChristmasRecordPlayer from './ChristmasRecordPlayer'
 import GiftIdeas from './GiftIdeas'
+import ShopperChat from './ShopperChat'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronRight, Copy, Heart, Menu, Sparkles, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { gifts, listContent, themes, type Gift } from './data/gifts'
 
 import QuizModal from './QuizModal'
@@ -13,7 +14,7 @@ import GiftImage from './GiftImage'
 const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
 
 function App() {
-  const { approvedIdeas } = useCoordination()
+  const { approvedIdeas, session, snapshot, stale } = useCoordination()
   const allGifts = useMemo(() => [...gifts, ...approvedIdeas], [approvedIdeas])
   const [activeTheme, setActiveTheme] = useState<(typeof themes)[number]>('All gifts')
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null)
@@ -21,6 +22,32 @@ function App() {
   const [quizOpen, setQuizOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [purchaseNotices, setPurchaseNotices] = useState<{ id: string; text: string }[]>([])
+  const observedClaims = useRef<{ account: string | null; initialized: boolean; claims: Map<string, { status: string; buyerName: string | null }> }>({ account: null, initialized: false, claims: new Map() })
+
+  useEffect(() => {
+    if (!session || snapshot?.role !== 'shopper' || stale) {
+      observedClaims.current = { account: session?.user.id ?? null, initialized: false, claims: new Map() }
+      return
+    }
+    const account = session.user.id
+    const currentClaims = new Map(snapshot.gifts.map(claim => [claim.giftId, { status: claim.status, buyerName: claim.buyerName }]))
+    const previous = observedClaims.current
+    if (previous.account === account && previous.initialized) {
+      const newNotices = snapshot.gifts.flatMap(claim => {
+        const old = previous.claims.get(claim.giftId)
+        if (claim.status !== 'bought' || claim.mine || (old?.status === 'bought' && old.buyerName === claim.buyerName)) return []
+        const gift = allGifts.find(item => item.id === claim.giftId)
+        if (!gift) return []
+        return [{ id: `${claim.giftId}-${claim.buyerName ?? 'shopper'}-${Date.now()}`, text: `${gift.name} was just marked bought by ${claim.buyerName ?? 'a shopper'}.` }]
+      })
+      if (newNotices.length) {
+        setPurchaseNotices(current => [...current, ...newNotices].slice(-3))
+        window.setTimeout(() => setPurchaseNotices(current => current.filter(notice => !newNotices.some(next => next.id === notice.id))), 8000)
+      }
+    }
+    observedClaims.current = { account, initialized: true, claims: currentClaims }
+  }, [allGifts, session, snapshot, stale])
 
   useEffect(() => {
     document.title = personalize(listContent.pageTitle)
@@ -47,6 +74,9 @@ function App() {
   return (
     <main className="site-shell">
       <div className="grain" />
+      {purchaseNotices.length > 0 && <div className="purchase-notifications" role="region" aria-label="Gift purchase updates" aria-live="polite">
+        {purchaseNotices.map(notice => <p role="status" key={notice.id}>{notice.text}</p>)}
+      </div>}
       <nav className="topbar">
         <a className="wordmark" href="#top" aria-label="Merrylist home">
           <span className="wordmark-star">✳</span> {listContent.brand}
@@ -98,6 +128,7 @@ function App() {
         </div>
         <AccountPanel />
         <GiftIdeas />
+        <ShopperChat />
         <div className="theme-tabs" role="tablist" aria-label="Filter by theme">
           {themes.map((theme) => <button key={theme} className={activeTheme === theme ? 'active' : ''} onClick={() => setActiveTheme(theme)}>{theme}</button>)}
         </div>
@@ -126,7 +157,7 @@ function App() {
 
 function GiftCard({ gift, index, isFavorite, onFavorite, onOpen }: { gift: Gift; index: number; isFavorite: boolean; onFavorite: () => void; onOpen: () => void }) {
   return <motion.article className="gift-card" layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: .95 }} transition={{ duration: .35, delay: index * .06 }}>
-    <button className="image-button" onClick={onOpen} aria-label={`View ${gift.name}`}><GiftImage src={gift.image} alt={gift.name} /><span className="view-pill">View <ArrowUpRight size={14} /></span></button>
+    <button className="image-button" onClick={onOpen} aria-label={`View ${gift.name}`}><GiftImage src={gift.image} alt={gift.name} /><GiftBoughtOverlay giftId={gift.id} /><span className="view-pill">View <ArrowUpRight size={14} /></span></button>
     <div className="card-meta"><span className="theme-label">{gift.theme}</span><button className={`heart-button ${isFavorite ? 'hearted' : ''}`} onClick={onFavorite} aria-label={isFavorite ? 'Remove from favorites' : 'Save as favorite'}><Heart size={17} fill={isFavorite ? 'currentColor' : 'none'} /></button></div>
     <GiftClaimBadge giftId={gift.id} />
     <button className="card-title" onClick={onOpen}>{gift.name}</button>
