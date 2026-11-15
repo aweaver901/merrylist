@@ -1,7 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { fallbackChristmasSongs } from './data/christmasSongs'
 import type { Gift } from './data/gifts'
 import { coordinationClient as client, readApprovedIdeas, readChristmasSongs, readGiftSuggestions, readSnapshot, type ChristmasSong, type ChristmasSongInput, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput } from './lib/coordination'
+
+const builtInChristmasSongs: ChristmasSong[] = fallbackChristmasSongs.map((song, index) => ({
+  ...song,
+  id: `built-in-${index + 1}`,
+}))
+
+function mergeChristmasSongs(songs: ChristmasSong[]) {
+  const songsByAudioUrl = new Map(builtInChristmasSongs.map(song => [song.audioUrl, song]))
+  for (const song of songs) songsByAudioUrl.set(song.audioUrl, song)
+  return [...songsByAudioUrl.values()]
+}
 
 type Coordination = {
   configured: boolean; session: Session | null; snapshot: CoordinationSnapshot | null
@@ -36,7 +48,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const [suggestionsLoading, setSuggestionsLoading] = useState(Boolean(client))
   const [suggestionsBusy, setSuggestionsBusy] = useState(false)
   const [suggestionsError, setSuggestionsError] = useState('')
-  const [christmasSongs, setChristmasSongs] = useState<ChristmasSong[]>([])
+  const [christmasSongs, setChristmasSongs] = useState<ChristmasSong[]>(builtInChristmasSongs)
   const [musicLoading, setMusicLoading] = useState(Boolean(client))
   const [musicError, setMusicError] = useState('')
   const [musicBusy, setMusicBusy] = useState(false)
@@ -124,12 +136,12 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       const next = readChristmasSongs(data)
       if (ticket !== musicRequest.current) return false
       musicLoaded.current = true
-      setChristmasSongs(next)
+      setChristmasSongs(mergeChristmasSongs(next))
       setMusicError('')
       return true
     } catch {
       if (ticket !== musicRequest.current) return false
-      setMusicError('The music library could not be loaded. Check your connection and try again.')
+      setMusicError('The online playlist is unavailable. The built-in carols are still available; check your connection to load added songs.')
       return false
     } finally {
       if (ticket === musicRequest.current) setMusicLoading(false)

@@ -7,20 +7,6 @@ import { stripTypeScriptTypes } from 'node:module'
 const origin = 'http://127.0.0.1:4175'
 const source = await readFile(new URL('../src/data/gifts.ts', import.meta.url), 'utf8')
 const { gifts } = await import(`data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(source)).toString('base64')}`)
-const musicPlaylist = [
-  ['Jingle Bells', 'Starlifter and Roots in Blue'],
-  ['Deck the Halls', 'U.S. Air Force Band and Singing Sergeants'],
-  ['Joy to the World', 'Starlifter and Roots in Blue'],
-  ['We Wish You a Merry Christmas', 'Starlifter and Roots in Blue'],
-  ['Silent Night', 'Singing Sergeants'],
-  ['O Christmas Tree', 'Airmen of Note'],
-].map(([title, artist], index) => ({
-  id: `song-${index + 1}`,
-  title,
-  artist,
-  audioUrl: `https://upload.wikimedia.org/test/${title.replaceAll(' ', '_')}.mp3`,
-  sourceUrl: `https://commons.wikimedia.org/wiki/${title.replaceAll(' ', '_')}`,
-}))
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '4175', '--strictPort'], {
   cwd: new URL('..', import.meta.url), windowsHide: true,
   env: { ...process.env, VITE_SUPABASE_URL: 'https://merrylist-test.supabase.co', VITE_SUPABASE_PUBLISHABLE_KEY: 'test-public-key' },
@@ -64,6 +50,7 @@ try {
   let revision = 0
   let mine = true
   let offline = false
+  let musicUnavailable = true
   const suggestions = []
   const approvedIdeas = []
   const addedSongs = []
@@ -94,12 +81,16 @@ try {
       return route.fulfill({ json: { role: email.startsWith('owner') ? 'owner' : 'shopper', gifts: [...gifts, ...approvedIdeas].map(gift => ({ giftId: gift.id, status: gift.id === 'black-slides' ? status : 'available', revision: gift.id === 'black-slides' ? revision : 0, mine: gift.id === 'black-slides' && status !== 'available' && mine })) } })
     }
     if (url.includes('/rpc/approved_gift_ideas')) return route.fulfill({ json: approvedIdeas })
-    if (url.includes('/rpc/christmas_songs')) return route.fulfill({ json: [...musicPlaylist, ...addedSongs] })
+    if (url.includes('/rpc/christmas_songs')) {
+      if (musicUnavailable) return route.fulfill({ status: 503, json: { message: 'Unavailable' } })
+      return route.fulfill({ json: addedSongs })
+    }
     if (url.includes('/rpc/add_christmas_song')) {
       if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
       const input = route.request().postDataJSON()
-      const id = `song-${musicPlaylist.length + addedSongs.length + 1}`
+      const id = `song-${addedSongs.length + 7}`
       addedSongs.push({ id, title: input.p_title, artist: input.p_artist, audioUrl: input.p_audio_url, sourceUrl: input.p_source_url })
+      musicUnavailable = false
       return route.fulfill({ json: id })
     }
     if (url.includes('/rpc/add_owner_gift')) {
@@ -171,6 +162,7 @@ try {
   expect(leftDock.x).toBeLessThan(viewport.width / 2)
   await page.getByRole('button', { name: 'Open Christmas record player' }).click()
   await expect(page.getByLabel('Choose a carol').locator('option')).toHaveCount(6)
+  await expect(page.locator('.record-player-error')).toContainText('The online playlist is unavailable')
   await page.getByRole('button', { name: 'Play Christmas music' }).click()
   await expect(page.locator('.record-player-status')).toHaveText('Playing · Jingle Bells')
   expect(audioRequests.some(url => url.includes('Jingle_Bells'))).toBe(true)
