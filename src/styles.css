@@ -138,7 +138,12 @@ a { text-decoration: none; }
 .footer-mark { color: var(--holiday-gold); }
 @media (max-width: 470px) { .holiday-sprig { left: -4px; top: 8px; width: 138px; } .hero-art::before { width: 330px; height: 330px; } }
 
-.record-player { position: fixed; right: 20px; bottom: 20px; z-index: 25; color: var(--ink); font-family: 'DM Sans', sans-serif; }
+.record-player { position: fixed; left: 20px; bottom: 20px; z-index: 25; color: var(--ink); font-family: 'DM Sans', sans-serif; }
+.record-player-docked-right { left: auto; right: 20px; }
+.record-player.is-dragging { z-index: 26; user-select: none; }
+.record-player-drag-handle { cursor: grab; touch-action: none; }
+.record-player-drag-handle:active { cursor: grabbing; }
+.record-player-header-actions { display: flex; gap: 7px; }
 .record-player-panel { width: min(335px, calc(100vw - 28px)); padding: 16px; background: var(--paper); border: 1px solid #b58b4f80; border-top: 3px solid var(--evergreen); box-shadow: 0 12px 40px #1832292b; }
 .record-player-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .record-player-header > div > span { display: block; margin-top: 3px; color: var(--muted); font: 9px 'DM Mono', monospace; }
@@ -171,4 +176,4 @@ a { text-decoration: none; }
 .mini-play { flex: 0 0 auto; width: 34px; height: 34px; }
 .record-player button:focus-visible, .record-player select:focus-visible, .record-player input:focus-visible { outline: 2px solid var(--holiday-gold); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .record-disc.is-playing { animation: none; } }
-@media (max-width: 470px) { .record-player { right: 12px; bottom: 12px; } .record-player-panel { width: min(335px, calc(100vw - 24px)); padding: 14px; } }
+@media (max-width: 470px) { .record-player { left: 12px; bottom: 12px; } .record-player-docked-right { left: auto; right: 12px; } .record-player-panel { width: min(335px, calc(100vw - 24px)); padding: 14px; } }
