@@ -11,6 +11,8 @@ export type CoordinationSnapshot = { role: 'owner' | 'shopper' | 'unconfigured' 
 export type GiftSuggestionStatus = 'pending' | 'approved' | 'denied'
 export type GiftSuggestion = { id: string; status: GiftSuggestionStatus; createdAt: string; gift: Gift }
 export type GiftSuggestionInput = Omit<Gift, 'id' | 'image'> & { image: string }
+export type ChristmasSong = { id: string; title: string; artist: string; audioUrl: string; sourceUrl: string }
+export type ChristmasSongInput = Omit<ChristmasSong, 'id'>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object')
@@ -49,6 +51,31 @@ export function readGiftSuggestions(value: unknown): GiftSuggestion[] {
       gift: readGift(entry.gift),
     }
   })
+}
+
+export function readChristmasSongs(value: unknown): ChristmasSong[] {
+  if (!Array.isArray(value)) throw new Error('Invalid music library response')
+  return value.map((entry): ChristmasSong => {
+    if (!isRecord(entry) ||
+        typeof entry.id !== 'string' || !entry.id ||
+        typeof entry.title !== 'string' || !entry.title.trim() ||
+        typeof entry.artist !== 'string' ||
+        typeof entry.audioUrl !== 'string' || !isHttpsUrl(entry.audioUrl) ||
+        typeof entry.sourceUrl !== 'string' || !isHttpsUrl(entry.sourceUrl)) {
+      throw new Error('Invalid music library response')
+    }
+    return {
+      id: entry.id,
+      title: entry.title,
+      artist: entry.artist,
+      audioUrl: entry.audioUrl,
+      sourceUrl: entry.sourceUrl,
+    }
+  })
+}
+
+function isHttpsUrl(value: string) {
+  try { return new URL(value).protocol === 'https:' } catch { return false }
 }
 
 export function readSnapshot(value: unknown): CoordinationSnapshot {

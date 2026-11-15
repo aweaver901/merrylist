@@ -1,17 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import type { Gift } from './data/gifts'
-import { coordinationClient as client, readApprovedIdeas, readGiftSuggestions, readSnapshot, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput } from './lib/coordination'
+import { coordinationClient as client, readApprovedIdeas, readChristmasSongs, readGiftSuggestions, readSnapshot, type ChristmasSong, type ChristmasSongInput, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput } from './lib/coordination'
 
 type Coordination = {
   configured: boolean; session: Session | null; snapshot: CoordinationSnapshot | null
   loading: boolean; error: string; stale: boolean; busyGift: string | null
   approvedIdeas: Gift[]; suggestions: GiftSuggestion[]; suggestionsLoading: boolean
   suggestionsBusy: boolean; suggestionsError: string
+  christmasSongs: ChristmasSong[]; musicLoading: boolean; musicError: string; musicBusy: boolean
   refresh: () => Promise<void>; change: (giftId: string, status: GiftStatus) => Promise<void>
   refreshSuggestions: () => Promise<void>
   submitSuggestion: (gift: GiftSuggestionInput) => Promise<boolean>
   reviewSuggestion: (id: string, status: 'approved' | 'denied') => Promise<boolean>
+  refreshChristmasSongs: () => Promise<boolean>
+  addChristmasSong: (song: ChristmasSongInput) => Promise<boolean>
 }
 const Context = createContext<Coordination | null>(null)
 export const useCoordination = () => {
@@ -32,12 +35,19 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const [suggestionsLoading, setSuggestionsLoading] = useState(Boolean(client))
   const [suggestionsBusy, setSuggestionsBusy] = useState(false)
   const [suggestionsError, setSuggestionsError] = useState('')
+  const [christmasSongs, setChristmasSongs] = useState<ChristmasSong[]>([])
+  const [musicLoading, setMusicLoading] = useState(Boolean(client))
+  const [musicError, setMusicError] = useState('')
+  const [musicBusy, setMusicBusy] = useState(false)
   const identity = useRef<string | null>(null)
   const generation = useRef(0)
   const request = useRef(0)
   const suggestionRequest = useRef(0)
+  const musicRequest = useRef(0)
+  const musicLoaded = useRef(false)
   const mutating = useRef(false)
   const suggestionMutation = useRef(false)
+  const musicMutation = useRef(false)
 
   useEffect(() => {
     if (!client) return
@@ -51,6 +61,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       setBusyGift(null); mutating.current = false; suggestionMutation.current = false
       setApprovedIdeas([]); setSuggestions([]); setSuggestionsError(''); setSuggestionsLoading(Boolean(nextSession))
       setSuggestionsBusy(false)
+      musicMutation.current = false; setMusicBusy(false)
     })
     return () => { subscription.unsubscribe(); identity.current = null; generation.current++; request.current++; suggestionRequest.current++ }
   }, [])
@@ -102,8 +113,31 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     }
   }, [session])
 
+  const refreshChristmasSongs = useCallback(async () => {
+    if (!client) return false
+    const ticket = ++musicRequest.current
+    if (!musicLoaded.current) setMusicLoading(true)
+    try {
+      const { data, error: failure } = await client.rpc('christmas_songs').abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      const next = readChristmasSongs(data)
+      if (ticket !== musicRequest.current) return false
+      musicLoaded.current = true
+      setChristmasSongs(next)
+      setMusicError('')
+      return true
+    } catch {
+      if (ticket !== musicRequest.current) return false
+      setMusicError('The music library could not be loaded. Check your connection and try again.')
+      return false
+    } finally {
+      if (ticket === musicRequest.current) setMusicLoading(false)
+    }
+  }, [])
+
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { void refreshSuggestions() }, [refreshSuggestions])
+  useEffect(() => { void refreshChristmasSongs() }, [refreshChristmasSongs])
   useEffect(() => {
     if (!session || snapshot?.role === 'owner') return
     const sync = () => { if (document.visibilityState === 'visible') void refresh() }
@@ -121,6 +155,14 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', sync)
     return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
   }, [session, refreshSuggestions])
+
+  useEffect(() => {
+    const sync = () => { if (document.visibilityState === 'visible') void refreshChristmasSongs() }
+    const interval = window.setInterval(sync, 30000)
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
+  }, [refreshChristmasSongs])
 
   const change = async (giftId: string, status: GiftStatus) => {
     if (!client || snapshot?.role !== 'shopper' || stale || mutating.current) return
@@ -186,10 +228,33 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
     }
   }
+  const addChristmasSong = async (song: ChristmasSongInput) => {
+    if (!client || !session || snapshot?.role !== 'owner' || musicMutation.current) return false
+    const version = generation.current
+    musicMutation.current = true; setMusicBusy(true); setMusicError('')
+    try {
+      const { error: failure } = await client.rpc('add_christmas_song', {
+        p_title: song.title,
+        p_artist: song.artist,
+        p_audio_url: song.audioUrl,
+        p_source_url: song.sourceUrl,
+      }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      if (generation.current !== version) return false
+      void refreshChristmasSongs()
+      return true
+    } catch {
+      if (generation.current === version) setMusicError('The song could not be added. Check the details and try again.')
+      return false
+    } finally {
+      if (generation.current === version) { musicMutation.current = false; setMusicBusy(false) }
+    }
+  }
   return <Context.Provider value={{
     configured: Boolean(client), session, snapshot, loading, error, stale, busyGift, refresh, change,
     approvedIdeas, suggestions, suggestionsLoading, suggestionsBusy, suggestionsError,
     refreshSuggestions, submitSuggestion, reviewSuggestion,
+    christmasSongs, musicLoading, musicError, musicBusy, refreshChristmasSongs, addChristmasSong,
   }}>{children}</Context.Provider>
 }
 

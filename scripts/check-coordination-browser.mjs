@@ -7,6 +7,20 @@ import { stripTypeScriptTypes } from 'node:module'
 const origin = 'http://127.0.0.1:4175'
 const source = await readFile(new URL('../src/data/gifts.ts', import.meta.url), 'utf8')
 const { gifts } = await import(`data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(source)).toString('base64')}`)
+const musicPlaylist = [
+  ['Jingle Bells', 'Starlifter and Roots in Blue'],
+  ['Deck the Halls', 'U.S. Air Force Band and Singing Sergeants'],
+  ['Joy to the World', 'Starlifter and Roots in Blue'],
+  ['We Wish You a Merry Christmas', 'Starlifter and Roots in Blue'],
+  ['Silent Night', 'Singing Sergeants'],
+  ['O Christmas Tree', 'Airmen of Note'],
+].map(([title, artist], index) => ({
+  id: `song-${index + 1}`,
+  title,
+  artist,
+  audioUrl: `https://upload.wikimedia.org/test/${title.replaceAll(' ', '_')}.mp3`,
+  sourceUrl: `https://commons.wikimedia.org/wiki/${title.replaceAll(' ', '_')}`,
+}))
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '4175', '--strictPort'], {
   cwd: new URL('..', import.meta.url), windowsHide: true,
   env: { ...process.env, VITE_SUPABASE_URL: 'https://merrylist-test.supabase.co', VITE_SUPABASE_PUBLISHABLE_KEY: 'test-public-key' },
@@ -52,6 +66,7 @@ try {
   let offline = false
   const suggestions = []
   const approvedIdeas = []
+  const addedSongs = []
   let nextIdeaId = 0
   let nextEmail = 'shopper@example.com'
   let cancelSignIn = true
@@ -78,6 +93,14 @@ try {
       return route.fulfill({ json: { role: email.startsWith('owner') ? 'owner' : 'shopper', gifts: [...gifts, ...approvedIdeas].map(gift => ({ giftId: gift.id, status: gift.id === 'black-slides' ? status : 'available', revision: gift.id === 'black-slides' ? revision : 0, mine: gift.id === 'black-slides' && status !== 'available' && mine })) } })
     }
     if (url.includes('/rpc/approved_gift_ideas')) return route.fulfill({ json: approvedIdeas })
+    if (url.includes('/rpc/christmas_songs')) return route.fulfill({ json: [...musicPlaylist, ...addedSongs] })
+    if (url.includes('/rpc/add_christmas_song')) {
+      if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
+      const input = route.request().postDataJSON()
+      const id = `song-${musicPlaylist.length + addedSongs.length + 1}`
+      addedSongs.push({ id, title: input.p_title, artist: input.p_artist, audioUrl: input.p_audio_url, sourceUrl: input.p_source_url })
+      return route.fulfill({ json: id })
+    }
     if (url.includes('/rpc/gift_ideas')) {
       const owner = email.startsWith('owner')
       return route.fulfill({ json: { role: owner ? 'owner' : 'shopper', suggestions: suggestions.filter(idea => owner ? idea.status === 'pending' : idea.submitter === email).map(({ submitter, ...idea }) => idea) } })
@@ -147,6 +170,7 @@ try {
   await expect(page.locator('.record-player-status')).toHaveText('Paused · O Christmas Tree')
   await page.getByRole('button', { name: 'Next Christmas song' }).click()
   await expect(page.locator('.record-player-status')).toHaveText('Paused · Jingle Bells')
+  await expect(page.getByRole('button', { name: 'Add a song' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Google sign-in was canceled')
   await expect(page.getByRole('button', { name: 'Sign in with Google', exact: true })).toBeEnabled()
@@ -158,6 +182,9 @@ try {
   }
   await signIn('shopper@example.com')
   await expect(page.getByText('Up to date', { exact: true })).toBeVisible()
+  const openPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
+  if (await openPlayer.isVisible()) await openPlayer.click()
+  await expect(page.getByRole('button', { name: 'Add a song' })).toHaveCount(0)
   await expect(page.locator('.claim-available')).toHaveCount(23)
   const suggestGift = async (name, price) => {
     await page.getByRole('button', { name: 'Suggest a gift' }).click()
@@ -199,6 +226,18 @@ try {
   await expect(page.locator('.claim-badge')).toHaveCount(0)
   await signIn('owner@example.com')
   await expect(page.getByText('Your surprises are safe', { exact: true })).toBeVisible()
+  const ownerOpenPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
+  if (await ownerOpenPlayer.isVisible()) await ownerOpenPlayer.click()
+  await expect(page.getByRole('button', { name: 'Add a song' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add a song' }).click()
+  await page.getByLabel('Song title').fill('A New Carol')
+  await page.getByLabel('Artist or performer (optional)').fill('The Merrylist Choir')
+  await page.getByLabel('Direct audio file URL').fill('https://upload.wikimedia.org/test/new-carol.mp3')
+  await page.getByLabel('Source or attribution URL').fill('https://commons.wikimedia.org/wiki/New_Carol')
+  await page.getByRole('button', { name: 'Add to playlist' }).click()
+  await expect(page.getByText('A New Carol was added to the playlist.')).toBeVisible()
+  await expect(page.getByLabel('Choose a carol').locator('option')).toHaveCount(7)
+  await expect(page.getByLabel('Choose a carol')).toContainText('A New Carol')
   await expect(page.locator('.idea-count')).toHaveText('2 pending')
   await page.locator('.gift-idea-card').filter({ hasText: 'A Thoughtful Book' }).getByRole('button', { name: 'Approve' }).click()
   await expect(page.locator('.gift-card')).toHaveCount(24)
@@ -218,7 +257,7 @@ try {
   expect(failures).toEqual([])
   expect(oauthRequests).toBe(3)
   await context.close()
-  console.log('Browser checks passed: draggable bottom-docked player, Christmas audio controls, Google sign-in, gift idea review/publication, shopper claims, and mobile layout.')
+  console.log('Browser checks passed: owner-managed music playlist, draggable player, Google sign-in, gift idea review/publication, shopper claims, and mobile layout.')
 } finally {
   await browser?.close()
   server.kill()

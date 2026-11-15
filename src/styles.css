@@ -144,7 +144,7 @@ a { text-decoration: none; }
 .record-player-drag-handle { cursor: grab; touch-action: none; }
 .record-player-drag-handle:active { cursor: grabbing; }
 .record-player-header-actions { display: flex; gap: 7px; }
-.record-player-panel { width: min(335px, calc(100vw - 28px)); padding: 16px; background: var(--paper); border: 1px solid #b58b4f80; border-top: 3px solid var(--evergreen); box-shadow: 0 12px 40px #1832292b; }
+.record-player-panel { width: min(335px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow-y: auto; padding: 16px; background: var(--paper); border: 1px solid #b58b4f80; border-top: 3px solid var(--evergreen); box-shadow: 0 12px 40px #1832292b; }
 .record-player-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .record-player-header > div > span { display: block; margin-top: 3px; color: var(--muted); font: 9px 'DM Mono', monospace; }
 .record-player-kicker { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--evergreen); font: 10px 'DM Mono', monospace; letter-spacing: 1px; }
@@ -167,6 +167,11 @@ a { text-decoration: none; }
 .record-player-volume small { min-width: 29px; color: var(--muted); font: 9px 'DM Mono', monospace; }
 .record-player-status { margin: 10px 0 0; color: var(--muted); font: 9px 'DM Mono', monospace; }
 .record-player-error { margin: 9px 0 0; color: #a43020; font-size: 11px; line-height: 1.5; }
+.record-player-manager { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.record-player-song-form { margin: 8px 0; padding: 11px; }
+.record-player-song-fields { display: grid; gap: 9px; }
+.record-player-song-form .claim-hint { margin: 10px 0; font-size: 9px; }
+.record-player-song-form .primary-button { width: 100%; justify-content: center; }
 .record-player-mini { display: flex; align-items: center; gap: 10px; width: min(315px, calc(100vw - 24px)); padding: 9px 11px; border: 1px solid #b58b4f80; border-left: 3px solid var(--evergreen); background: var(--paper); box-shadow: 0 8px 26px #18322924; }
 .record-player-open { display: flex; flex: 1; align-items: center; min-width: 0; gap: 10px; padding: 0; background: transparent; text-align: left; }
 .record-player-open .record-disc { width: 42px; height: 42px; }
