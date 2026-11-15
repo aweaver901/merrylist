@@ -1,5 +1,6 @@
 import AccountPanel from './AccountPanel'
 import { GiftClaimBadge, GiftClaimControls, GiftPurchaseLink, useCoordination } from './Coordination'
+import ChristmasRecordPlayer from './ChristmasRecordPlayer'
 import GiftIdeas from './GiftIdeas'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronRight, Copy, Heart, Menu, Sparkles, X } from 'lucide-react'
@@ -74,6 +75,15 @@ function App() {
           </div>
         </motion.div>
         <motion.div className="hero-art" initial={{ opacity: 0, scale: .94, rotate: 2 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: .9, delay: .15 }}>
+          <svg className="holiday-sprig" viewBox="0 0 220 130" aria-hidden="true">
+            <path className="sprig-stem" d="M12 112C58 96 121 62 208 17" />
+            <path className="sprig-leaf" d="M43 98C22 104 13 92 16 77c14-1 26 6 29 18Zm35-20C57 80 50 67 55 53c15 2 25 12 26 23Zm40-22c-20-2-26-16-18-29 15 4 22 15 21 27Zm39-21c-16-7-17-21-5-31 13 7 17 18 10 29Z" />
+            <path className="sprig-leaf" d="M58 91c15-17 30-15 38-3-9 12-22 16-36 7Zm40-22c16-16 30-12 36 0-10 11-24 13-37 4Zm39-22c16-14 29-8 33 5-11 9-24 9-36-1Z" />
+            <path className="sprig-vein" d="m22 83 21 15m15-42 23 22m20-50 20 25M61 95l34-7m3-19 35-4m3-18 33-5" />
+            <circle className="sprig-berry" cx="73" cy="106" r="5" />
+            <circle className="sprig-berry" cx="84" cy="108" r="4" />
+            <circle className="sprig-berry" cx="78" cy="116" r="4" />
+          </svg>
           <div className="orbit orbit-one" /><div className="orbit orbit-two" />
           <div className="hero-image-wrap"><GiftImage src={heroGift?.image ?? ''} alt={listContent.hero.imageAlt} eager /></div>
           <div className="hero-sticker"><span>{allGifts.length}</span> {listContent.hero.stickerLabel}</div>
@@ -107,6 +117,7 @@ function App() {
 
       <footer><span>{listContent.footer}</span><span className="footer-mark">{listContent.footerMark}</span></footer>
 
+      <ChristmasRecordPlayer />
       <AnimatePresence>{selectedGift && <GiftModal gift={selectedGift} isFavorite={favorites.includes(selectedGift.id)} onFavorite={() => toggleFavorite(selectedGift.id)} onClose={() => setSelectedGift(null)} />}</AnimatePresence>
       <AnimatePresence>{quizOpen && <QuizModal gifts={allGifts} onClose={() => { setQuizOpen(false) }} onOpenGift={(gift) => { setQuizOpen(false); setSelectedGift(gift) }} />}</AnimatePresence>
     </main>
