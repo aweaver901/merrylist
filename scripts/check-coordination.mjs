@@ -36,6 +36,10 @@ const addChristmasSong = (title = 'A new carol', audioUrl = 'https://example.com
   'select public.add_christmas_song($1, $2, $3, $4) as id',
   [title, 'A local choir', audioUrl, 'https://example.com/source'],
 )
+const addOwnerGift = (name = 'A gift added by the owner', link = 'https://example.com/owner-gift') => db.query(
+  'select public.add_owner_gift($1, $2, $3, $4, $5, $6, $7, $8) as id',
+  [name, 45, 'Other', link, 'A gift added directly by the owner.', null, 'A thoughtful addition.', ['owner pick']],
+)
 const submitIdea = (name = 'A thoughtful new gift') => db.query(
   `select public.submit_gift_idea($1, $2, $3, $4, $5, $6, $7, $8) as id`,
   [name, 34.5, 'Books', 'https://example.com/gift', 'A useful book.', null, 'A lovely idea.', ['book', 'thoughtful']],
@@ -48,18 +52,21 @@ await asUser(first, async () => assert.deepEqual(await snapshot(), { role: 'unco
 await db.exec(await readFile(new URL('../supabase/setup-owner.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611140002_gift_ideas.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611140003_christmas_songs.sql', import.meta.url), 'utf8'))
+await db.exec(await readFile(new URL('../supabase/migrations/202611150001_owner_gifts.sql', import.meta.url), 'utf8'))
 await asUser(null, () => denied(snapshot, '42501'))
 await asUser(unverified, async () => {
   assert.deepEqual(await snapshot(), { role: 'unverified', gifts: [] })
   await denied(() => change('black-slides', 'bought', 0), '42501')
   await denied(submitIdea, '42501')
   await denied(addChristmasSong, '42501')
+  await denied(addOwnerGift, '42501')
 })
 await asUser(null, async () => {
   const songs = await christmasSongs()
   assert.equal(songs.length, 6)
   assert.equal(songs[0].title, 'Jingle Bells')
   await denied(addChristmasSong, '42501')
+  await denied(addOwnerGift, '42501')
 })
 await asUser(first, async () => {
   await denied(() => db.query('select * from merrylist_private.claims'), '42501')
@@ -67,6 +74,8 @@ await asUser(first, async () => {
   await denied(() => db.query('select merrylist_private.viewer_role()'), '42501')
   await denied(() => db.query('select * from merrylist_private.christmas_songs'), '42501')
   await denied(addChristmasSong, '42501')
+  await denied(() => db.query('select * from merrylist_private.owner_gifts'), '42501')
+  await denied(addOwnerGift, '42501')
   const before = await snapshot()
   assert.equal(before.role, 'shopper')
   assert.equal(before.gifts.length, 23)
@@ -159,8 +168,28 @@ await asUser(second, async () => {
   await denied(() => change('black-slides', 'nonsense', 5), '22023')
 })
 await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] }))
+await asUser(owner, async () => {
+  await denied(() => db.query('select * from merrylist_private.owner_gifts'), '42501')
+  const ownerGiftId = (await addOwnerGift()).rows[0].id
+  assert.match(ownerGiftId, /^[0-9a-f-]{36}$/)
+  await denied(() => addOwnerGift('Invalid gift', 'javascript:alert(1)'), '22023')
+  const published = await approvedIdeas()
+  const addedGift = published.find(gift => gift.id === `owner-${ownerGiftId}`)
+  assert.equal(addedGift.name, 'A gift added by the owner')
+  assert.equal(addedGift.theme, 'Other')
+})
+await asUser(null, async () => {
+  const published = await approvedIdeas()
+  assert.equal(published.length, 2)
+  assert.ok(published.some(gift => gift.id.startsWith('owner-')))
+})
+await asUser(first, async () => {
+  const gifts = (await snapshot()).gifts
+  assert.equal(gifts.length, 25)
+  assert.ok(gifts.some(gift => gift.giftId.startsWith('owner-')))
+})
 // The owner stays protected after changing their email; identity is bound server-side.
 await db.query('update auth.users set email = $1 where id = $2', ['owner-new@example.com', owner])
 await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] }))
 await db.close()
-console.log('Database checks passed: owner privacy, claims, gift idea review, and owner-only persistent music management.')
+console.log('Database checks passed: owner privacy, claims, gift review, direct owner gift publishing, and music management.')

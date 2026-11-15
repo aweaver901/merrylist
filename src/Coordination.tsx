@@ -13,6 +13,7 @@ type Coordination = {
   refreshSuggestions: () => Promise<void>
   submitSuggestion: (gift: GiftSuggestionInput) => Promise<boolean>
   reviewSuggestion: (id: string, status: 'approved' | 'denied') => Promise<boolean>
+  addOwnerGift: (gift: GiftSuggestionInput) => Promise<boolean>
   refreshChristmasSongs: () => Promise<boolean>
   addChristmasSong: (song: ChristmasSongInput) => Promise<boolean>
 }
@@ -228,6 +229,32 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
     }
   }
+  const addOwnerGift = async (gift: GiftSuggestionInput) => {
+    if (!client || !session || snapshot?.role !== 'owner' || suggestionMutation.current) return false
+    const version = generation.current
+    suggestionMutation.current = true; setSuggestionsBusy(true); setSuggestionsError('')
+    try {
+      const { error: failure } = await client.rpc('add_owner_gift', {
+        p_name: gift.name,
+        p_cost: gift.cost,
+        p_theme: gift.theme,
+        p_link: gift.link,
+        p_description: gift.description,
+        p_image_url: gift.image || null,
+        p_note: gift.note,
+        p_tags: gift.tags,
+      }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      if (generation.current !== version) return false
+      await Promise.all([refreshSuggestions(), refresh()])
+      return true
+    } catch {
+      if (generation.current === version) setSuggestionsError('The gift could not be added. Check the details and try again.')
+      return false
+    } finally {
+      if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
+    }
+  }
   const addChristmasSong = async (song: ChristmasSongInput) => {
     if (!client || !session || snapshot?.role !== 'owner' || musicMutation.current) return false
     const version = generation.current
@@ -253,7 +280,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   return <Context.Provider value={{
     configured: Boolean(client), session, snapshot, loading, error, stale, busyGift, refresh, change,
     approvedIdeas, suggestions, suggestionsLoading, suggestionsBusy, suggestionsError,
-    refreshSuggestions, submitSuggestion, reviewSuggestion,
+    refreshSuggestions, submitSuggestion, reviewSuggestion, addOwnerGift,
     christmasSongs, musicLoading, musicError, musicBusy, refreshChristmasSongs, addChristmasSong,
   }}>{children}</Context.Provider>
 }

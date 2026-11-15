@@ -58,6 +58,7 @@ button:disabled { cursor: wait; opacity: .6; transform: none; }
 .gift-ideas-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .gift-ideas-heading h3 { margin: 8px 0 5px; font: 500 25px/1.1 'Playfair Display', serif; }
 .gift-ideas-heading p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.idea-owner-actions { display: flex; align-items: center; gap: 12px; }
 .idea-count { flex-shrink: 0; padding: 8px 11px; background: var(--paper); color: var(--muted); font: 10px 'DM Mono', monospace; }
 .idea-count.has-ideas { background: #bd4d3b15; color: var(--red); }
 .gift-idea-list { display: grid; gap: 14px; margin-top: 20px; }

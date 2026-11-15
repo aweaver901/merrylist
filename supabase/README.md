@@ -9,8 +9,9 @@ Use an administrator database connection or the Supabase SQL editor to run these
 1. `migrations/202611140001_gift_coordination.sql` (if not already applied)
 2. `migrations/202611140002_gift_ideas.sql`
 3. `migrations/202611140003_christmas_songs.sql`
-4. `seed.sql` (if not already applied)
-5. `setup-owner.sql` (if not already applied)
+4. `migrations/202611150001_owner_gifts.sql`
+5. `seed.sql` (if not already applied)
+6. `setup-owner.sql` (if not already applied)
 
 The owner email has been set to the address Austin provided. Keep this setting server-side. The owner is bound to their stable account ID after email verification, so changing their email later will not reveal purchase statuses. Without owner configuration, all coordination requests fail closed with no gift statuses.
 
@@ -20,11 +21,13 @@ When gifts change, run `npm run sync:catalog` and apply the updated `seed.sql`. 
 
 The website uses **Sign in with Google**. Supabase creates the website account when Google sign-in succeeds. No email/password registration, confirmation email, password-reset email, or custom SMTP is needed for this flow. Your existing `https://fluffy-alpaca-b0139a.netlify.app` address works.
 
-If you already ran the three SQL files above, keep them. Switching sign-in methods does not require rerunning the migration or deleting any data.
+If your Supabase database is already configured, keep its existing migrations and data. Switching sign-in methods does not require rerunning setup or deleting any data.
 
 For gift suggestions, existing deployments only need to apply the new `migrations/202611140002_gift_ideas.sql` migration once. No new environment variables or email service are required.
 
 Apply `migrations/202611140003_christmas_songs.sql` once to enable the owner-managed music playlist. It seeds the current carols in the database; after signing in as the configured owner, expand the record player and choose **Add a song**. Use a public HTTPS URL to a direct playable audio file and provide its source or attribution link. Spotify and YouTube page URLs are not direct audio files.
+
+Apply `migrations/202611150001_owner_gifts.sql` once to enable direct gift entry. The signed-in owner can add a gift from the **Gift ideas** panel; it appears immediately on the public list and in the quiz, without going through the shopper suggestion review flow.
 
 1. In Supabase, open **Authentication → Sign In / Providers → Google** (the provider page may be labeled **Providers**). Copy the **Callback URL** shown there. It normally looks like `https://YOUR-PROJECT.supabase.co/auth/v1/callback`.
 2. Open [Google Cloud Console](https://console.cloud.google.com/) with your Google account. Create or select a project named **Merrylist**.
@@ -68,6 +71,7 @@ Use only the publishable key. Never put a service-role key, database password, o
 - Signed-in shoppers can submit gift name, price, category, retailer link, description, personal recommendation, optional HTTPS photo URL, and tags. Suggestions are private to the submitter and owner while pending; submitters can see their own review status.
 - The owner sees an in-app pending count and can approve or decline suggestions. The list refreshes every 15 seconds while the owner is signed in, on focus, and on request. No email or browser-notification service is configured.
 - Approved ideas become public gift cards, appear in the quiz, and enter the shared coordination catalog. Declined ideas remain private to the submitter. Images use optional HTTPS URLs; uploaded files and image hosting are not part of this feature.
+- The signed-in owner can add gifts directly from the Gift ideas panel. These are stored separately from shopper suggestions and immediately appear in the public list, quiz, and coordination catalog.
 - The signed-in owner can add songs to the public playlist from the record player. Track metadata and HTTPS audio/source URLs are stored in the private database schema; anonymous visitors can read the playlist only through a narrow public RPC.
 - The database serializes changes per gift and checks a revision number. Two shoppers acting on the same old availability cannot both succeed.
 - All claim tables live in an unexposed private schema, with row-level security and no browser grants. The browser can call only the narrowly scoped public RPCs.

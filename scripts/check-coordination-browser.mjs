@@ -68,6 +68,7 @@ try {
   const approvedIdeas = []
   const addedSongs = []
   let nextIdeaId = 0
+  let nextOwnerGiftId = 0
   let nextEmail = 'shopper@example.com'
   let cancelSignIn = true
   let oauthRequests = 0
@@ -99,6 +100,23 @@ try {
       const input = route.request().postDataJSON()
       const id = `song-${musicPlaylist.length + addedSongs.length + 1}`
       addedSongs.push({ id, title: input.p_title, artist: input.p_artist, audioUrl: input.p_audio_url, sourceUrl: input.p_source_url })
+      return route.fulfill({ json: id })
+    }
+    if (url.includes('/rpc/add_owner_gift')) {
+      if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
+      const input = route.request().postDataJSON()
+      const id = `00000000-0000-0000-0000-${String(++nextOwnerGiftId).padStart(12, '0')}`
+      approvedIdeas.push({
+        id: `owner-${id}`,
+        name: input.p_name,
+        cost: input.p_cost,
+        theme: input.p_theme,
+        link: input.p_link,
+        description: input.p_description,
+        image: input.p_image_url ?? '',
+        note: input.p_note,
+        tags: input.p_tags,
+      })
       return route.fulfill({ json: id })
     }
     if (url.includes('/rpc/gift_ideas')) {
@@ -185,6 +203,7 @@ try {
   const openPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
   if (await openPlayer.isVisible()) await openPlayer.click()
   await expect(page.getByRole('button', { name: 'Add a song' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Add a gift' })).toHaveCount(0)
   await expect(page.locator('.claim-available')).toHaveCount(23)
   const suggestGift = async (name, price) => {
     await page.getByRole('button', { name: 'Suggest a gift' }).click()
@@ -242,11 +261,22 @@ try {
   await page.locator('.gift-idea-card').filter({ hasText: 'A Thoughtful Book' }).getByRole('button', { name: 'Approve' }).click()
   await expect(page.locator('.gift-card')).toHaveCount(24)
   await expect(page.getByRole('button', { name: 'A Thoughtful Book', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Add a gift' }).click()
+  await page.getByLabel('Gift name').fill('A Direct Owner Gift')
+  await page.getByLabel('Price (USD)').fill('42')
+  await page.getByLabel('Category').selectOption('Other')
+  await page.getByLabel('Retailer link').fill('https://example.com/owner-gift')
+  await page.getByLabel('Short description').fill('Added directly by the owner.')
+  await page.getByLabel('Why do you recommend it?').fill('A wonderful surprise.')
+  await page.getByRole('button', { name: 'Add to list' }).click()
+  await expect(page.getByText('A Direct Owner Gift was added to the list and quiz.')).toBeVisible()
+  await expect(page.locator('.gift-card')).toHaveCount(25)
+  await expect(page.getByRole('button', { name: 'A Direct Owner Gift', exact: true })).toBeVisible()
   await page.locator('.gift-idea-card').filter({ hasText: 'A Second Book' }).getByRole('button', { name: 'Decline' }).click()
   await expect(page.locator('.idea-count')).toHaveText('0 pending')
   // Deliberately injected statuses in the mocked owner response must be stripped.
   await expect(page.locator('.claim-badge')).toHaveCount(0)
-  await expect(page.locator('.gift-card')).toHaveCount(24)
+  await expect(page.locator('.gift-card')).toHaveCount(25)
   await page.getByRole('button', { name: 'View Draco Slides', exact: true }).click()
   await expect(page.locator('.claim-controls')).toHaveCount(0)
   await expect(page.locator('.gift-modal').getByRole('link', { name: 'See the gift' })).toBeVisible()
@@ -257,7 +287,7 @@ try {
   expect(failures).toEqual([])
   expect(oauthRequests).toBe(3)
   await context.close()
-  console.log('Browser checks passed: owner-managed music playlist, draggable player, Google sign-in, gift idea review/publication, shopper claims, and mobile layout.')
+  console.log('Browser checks passed: owner-added gifts, owner-managed music, gift idea review, shopper claims, and mobile layout.')
 } finally {
   await browser?.close()
   server.kill()
