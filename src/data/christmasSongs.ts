@@ -1,85 +1,45 @@
 export type ChristmasSong = {
   title: string
-  tempo: number
-  notes: ReadonlyArray<readonly [string, number]>
+  artist: string
+  audioUrl: string
+  sourceUrl: string
 }
 
 export const christmasSongs: ChristmasSong[] = [
   {
     title: 'Jingle Bells',
-    tempo: 112,
-    notes: [
-      ['B4', .5], ['B4', .5], ['B4', 1], ['B4', .5], ['B4', .5], ['B4', 1],
-      ['B4', .5], ['D5', .5], ['G4', .75], ['A4', .25], ['B4', 2],
-      ['C5', .5], ['C5', .5], ['C5', .75], ['C5', .25], ['C5', .5], ['B4', .5],
-      ['B4', .5], ['B4', .25], ['B4', .25], ['B4', .5], ['A4', .5], ['A4', .5],
-      ['B4', .5], ['A4', 1], ['D5', 1],
-    ],
+    artist: 'Starlifter and Roots in Blue · U.S. Air Force Band of Mid-America',
+    audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/7/72/Jingle_Bells_%282020%29_-_Starlifter_and_Roots_in_Blue_-_United_States_Air_Force_Band_of_Mid-America.mp3',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Jingle_Bells_(2020)_-_Starlifter_and_Roots_in_Blue_-_United_States_Air_Force_Band_of_Mid-America.mp3',
   },
   {
     title: 'Deck the Halls',
-    tempo: 108,
-    notes: [
-      ['D5', .5], ['C5', .5], ['B4', .5], ['A4', .5], ['G4', .5], ['A4', .5], ['B4', .5], ['G4', .5],
-      ['A4', .5], ['B4', .5], ['C5', .5], ['A4', .5], ['B4', .5], ['C5', .5], ['D5', .5], ['B4', .5],
-      ['A4', .5], ['G4', .5], ['F#4', .5], ['G4', .5], ['A4', .5], ['F#4', .5], ['G4', 1], ['D4', 1],
-    ],
+    artist: 'U.S. Air Force Band and Singing Sergeants',
+    audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/5/53/Deck_the_Halls_%28USAFB_Concert_Band%29.ogg',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Deck_the_Halls_(USAFB_Concert_Band).ogg',
   },
   {
     title: 'Joy to the World',
-    tempo: 104,
-    notes: [
-      ['C5', 1], ['B4', .5], ['A4', .5], ['G4', .5], ['F4', .5], ['E4', .5], ['D4', .5],
-      ['C4', 1], ['C4', 1], ['D4', 1], ['D4', .5], ['E4', .5], ['F4', .5], ['F4', .5],
-      ['G4', .5], ['G4', .5], ['G4', 1], ['A4', .5], ['B4', .5], ['C5', 1],
-      ['C5', .5], ['B4', .5], ['A4', .5], ['G4', .5], ['F4', .5], ['E4', .5], ['D4', .5], ['C4', 2],
-    ],
+    artist: 'Starlifter and Roots in Blue · U.S. Air Force Band of Mid-America',
+    audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/f/f1/Joy_to_the_World_%282020%29_-_Starlifter_and_Roots_in_Blue_-_United_States_Air_Force_Band_of_Mid-America.mp3',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Joy_to_the_World_(2020)_-_Starlifter_and_Roots_in_Blue_-_United_States_Air_Force_Band_of_Mid-America.mp3',
   },
   {
     title: 'We Wish You a Merry Christmas',
-    tempo: 112,
-    notes: [
-      ['D4', .5], ['G4', .5], ['G4', .5], ['A4', .5], ['G4', .5], ['F#4', .5], ['E4', 1],
-      ['E4', .5], ['E4', .5], ['A4', .5], ['A4', .5], ['B4', .5], ['A4', .5], ['G4', 1],
-      ['D5', .5], ['D5', .5], ['B4', .5], ['B4', .5], ['C5', .5], ['B4', .5], ['A4', 1],
-      ['D4', .5], ['G4', .5], ['G4', .5], ['A4', .5], ['G4', .5], ['F#4', .5], ['E4', 1],
-    ],
+    artist: 'Starlifter and Roots in Blue · U.S. Air Force Band of Mid-America',
+    audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/6/65/We_Wish_You_a_Merry_Christmas_%282020%29_-_Starlifter_and_Roots_in_Blue_-_United_States_Air_Force_Band_of_Mid-America.mp3',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:We_Wish_You_a_Merry_Christmas_(2020)_-_Starlifter_and_Roots_in_Blue_-_United_States_Air_Force_Band_of_Mid-America.mp3',
   },
   {
     title: 'Silent Night',
-    tempo: 88,
-    notes: [
-      ['G4', 1], ['A4', .5], ['G4', 1], ['E4', 1.5], ['G4', 1], ['A4', .5], ['G4', 1], ['E4', 1.5],
-      ['D5', 1], ['D5', 1], ['B4', 1.5], ['C5', 1], ['C5', 1], ['G4', 1.5],
-      ['A4', 1], ['A4', 1], ['C5', 1.5], ['B4', 1], ['A4', .5], ['G4', 1], ['A4', .5], ['G4', 1], ['E4', 2],
-    ],
+    artist: 'Singing Sergeants · U.S. Air Force Band',
+    audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Silent_Night_%281990%29_-_Singing_Sergeants_-_United_States_Air_Force_Band.mp3',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Silent_Night_(1990)_-_Singing_Sergeants_-_United_States_Air_Force_Band.mp3',
   },
   {
     title: 'O Christmas Tree',
-    tempo: 96,
-    notes: [
-      ['E4', 1], ['A4', 1], ['A4', .5], ['A4', .5], ['B4', 1], ['C5', 1], ['C5', .5], ['C5', .5],
-      ['C5', 1], ['B4', 1], ['C5', 1], ['D5', 1], ['B4', 1], ['A4', 1], ['A4', 2],
-      ['E4', 1], ['A4', 1], ['A4', .5], ['A4', .5], ['B4', 1], ['C5', 1], ['C5', .5], ['C5', .5],
-    ],
-  },
-  {
-    title: 'The First Noel',
-    tempo: 100,
-    notes: [
-      ['E4', 1], ['D4', .5], ['C4', .5], ['D4', .5], ['E4', .5], ['F4', .5], ['G4', 1.5],
-      ['A4', 1], ['B4', .5], ['C5', .5], ['B4', .5], ['A4', .5], ['G4', 1.5],
-      ['E4', 1], ['D4', .5], ['C4', .5], ['D4', .5], ['E4', .5], ['F4', .5], ['G4', 1.5],
-      ['A4', 1], ['B4', .5], ['C5', .5], ['B4', .5], ['A4', .5], ['G4', 2],
-    ],
-  },
-  {
-    title: 'Hark! The Herald Angels Sing',
-    tempo: 108,
-    notes: [
-      ['B4', .5], ['B4', .5], ['B4', 1], ['E5', 1], ['D5', .5], ['D5', .5], ['D5', 1], ['G5', 1],
-      ['F#5', .5], ['F#5', .5], ['F#5', 1], ['A5', 1], ['G5', .5], ['G5', .5], ['G5', 1], ['B5', 1],
-      ['E5', .5], ['E5', .5], ['D5', .5], ['C5', .5], ['B4', .5], ['A4', .5], ['G4', 1], ['F#4', 1],
-    ],
+    artist: 'Airmen of Note · U.S. Air Force Band',
+    audioUrl: 'https://upload.wikimedia.org/wikipedia/commons/5/5c/O_Christmas_Tree_-_Airmen_of_Note_-_United_States_Air_Force_Band.mp3',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:O_Christmas_Tree_-_Airmen_of_Note_-_United_States_Air_Force_Band.mp3',
   },
 ]
