@@ -29,15 +29,24 @@ async function asUser(id, fn) {
 }
 const snapshot = async () => (await db.query('select public.gift_coordination() as result')).rows[0].result
 const change = (gift, status, revision) => db.query('select public.set_gift_claim($1, $2, $3)', [gift, status, revision])
+const giftIdeas = async () => (await db.query('select public.gift_ideas() as result')).rows[0].result
+const approvedIdeas = async () => (await db.query('select public.approved_gift_ideas() as result')).rows[0].result
+const submitIdea = (name = 'A thoughtful new gift') => db.query(
+  `select public.submit_gift_idea($1, $2, $3, $4, $5, $6, $7, $8) as id`,
+  [name, 34.5, 'Books', 'https://example.com/gift', 'A useful book.', null, 'A lovely idea.', ['book', 'thoughtful']],
+)
+const reviewIdea = (id, status) => db.query('select public.review_gift_idea($1, $2)', [id, status])
 const denied = async (fn, code) => assert.rejects(fn, error => error.code === code)
 
 // No role configuration must never accidentally expose purchase data.
 await asUser(first, async () => assert.deepEqual(await snapshot(), { role: 'unconfigured', gifts: [] }))
 await db.exec(await readFile(new URL('../supabase/setup-owner.sql', import.meta.url), 'utf8'))
+await db.exec(await readFile(new URL('../supabase/migrations/202611140002_gift_ideas.sql', import.meta.url), 'utf8'))
 await asUser(null, () => denied(snapshot, '42501'))
 await asUser(unverified, async () => {
   assert.deepEqual(await snapshot(), { role: 'unverified', gifts: [] })
   await denied(() => change('black-slides', 'bought', 0), '42501')
+  await denied(submitIdea, '42501')
 })
 await asUser(first, async () => {
   await denied(() => db.query('select * from merrylist_private.claims'), '42501')
@@ -64,7 +73,56 @@ await asUser(owner, async () => {
   assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] })
   await denied(() => change('black-slides', 'available', 1), '42501')
   await denied(() => db.query('select * from merrylist_private.claims'), '42501')
+  await denied(() => db.query('select * from merrylist_private.gift_ideas'), '42501')
+  await denied(submitIdea, '42501')
 })
+let firstIdeaId
+await asUser(first, async () => {
+  firstIdeaId = (await submitIdea()).rows[0].id
+  const own = await giftIdeas()
+  assert.equal(own.role, 'shopper')
+  assert.equal(own.suggestions.length, 1)
+  assert.equal(own.suggestions[0].status, 'pending')
+  assert.ok(!JSON.stringify(own).includes('one@example.com'))
+  await denied(() => db.query('select * from merrylist_private.gift_ideas'), '42501')
+  await denied(() => reviewIdea(firstIdeaId, 'approved'), '42501')
+  await denied(() => submitIdea(''), '22023')
+})
+await asUser(second, async () => {
+  assert.deepEqual(await giftIdeas(), { role: 'shopper', suggestions: [] })
+  assert.deepEqual(await approvedIdeas(), [])
+})
+await asUser(owner, async () => {
+  const inbox = await giftIdeas()
+  assert.equal(inbox.role, 'owner')
+  assert.equal(inbox.suggestions.length, 1)
+  assert.equal(inbox.suggestions[0].gift.name, 'A thoughtful new gift')
+  await denied(() => reviewIdea(firstIdeaId, 'pending'), '22023')
+  await reviewIdea(firstIdeaId, 'approved')
+  await denied(() => reviewIdea(firstIdeaId, 'denied'), '40001')
+  assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] })
+})
+await asUser(null, async () => {
+  const published = await approvedIdeas()
+  assert.equal(published.length, 1)
+  assert.equal(published[0].id, `idea-${firstIdeaId}`)
+  assert.equal(published[0].name, 'A thoughtful new gift')
+  await denied(giftIdeas, '42501')
+})
+await asUser(first, async () => {
+  const claimCatalog = (await snapshot()).gifts
+  assert.equal(claimCatalog.length, 24)
+  assert.ok(claimCatalog.some(gift => gift.giftId === `idea-${firstIdeaId}`))
+  assert.equal((await giftIdeas()).suggestions[0].status, 'approved')
+})
+let secondIdeaId
+await asUser(second, async () => { secondIdeaId = (await submitIdea('A second gift idea')).rows[0].id })
+await asUser(owner, async () => {
+  assert.equal((await giftIdeas()).suggestions.length, 1)
+  assert.equal((await giftIdeas()).suggestions[0].gift.name, 'A second gift idea')
+  await reviewIdea(secondIdeaId, 'denied')
+})
+await asUser(second, async () => assert.equal((await giftIdeas()).suggestions[0].status, 'denied'))
 await asUser(first, async () => {
   await change('black-slides', 'bought', 1)
   await denied(() => change('black-slides', 'considering', 1), '40001')
@@ -81,4 +139,4 @@ await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owne
 await db.query('update auth.users set email = $1 where id = $2', ['owner-new@example.com', owner])
 await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] }))
 await db.close()
-console.log('Database checks passed: owner privacy, unverified/anonymous denial, claim ownership, stale conflicts, purchase/release, and owner email changes.')
+console.log('Database checks passed: owner privacy, unverified/anonymous denial, claim ownership, stale conflicts, purchase/release, owner email changes, and private gift idea review/publication.')

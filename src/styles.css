@@ -54,6 +54,51 @@ button:disabled { cursor: wait; opacity: .6; transform: none; }
 @media (max-width: 470px) { .quiz-result-card { align-items: flex-start; gap: 12px; padding: 12px; } .quiz-result-card img { width: 70px; height: 90px; } }
 @media (prefers-reduced-motion: reduce) { .interactive-quiz *, .interactive-quiz *::before, .interactive-quiz *::after { transition: none !important; animation: none !important; } }
 
+.gift-ideas-panel { margin: 18px 0 30px; padding: 22px; border: 1px solid var(--line); background: var(--cream); }
+.gift-ideas-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.gift-ideas-heading h3 { margin: 8px 0 5px; font: 500 25px/1.1 'Playfair Display', serif; }
+.gift-ideas-heading p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.idea-count { flex-shrink: 0; padding: 8px 11px; background: var(--paper); color: var(--muted); font: 10px 'DM Mono', monospace; }
+.idea-count.has-ideas { background: #bd4d3b15; color: var(--red); }
+.gift-idea-list { display: grid; gap: 14px; margin-top: 20px; }
+.gift-idea-card { display: grid; grid-template-columns: 115px minmax(0, 1fr); gap: 18px; padding: 16px; background: var(--paper); border: 1px solid var(--line); }
+.idea-image { height: 145px; background: #fff; }
+.idea-image img { width: 100%; height: 100%; object-fit: contain; }
+.idea-details { min-width: 0; }
+.idea-details h4 { margin: 6px 0; font: 500 21px/1.15 'Playfair Display', serif; overflow-wrap: anywhere; }
+.idea-description, .idea-note { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.idea-note { font-family: 'Playfair Display', serif; font-style: italic; }
+.idea-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-top: 1px solid var(--line); margin-top: 10px; padding-top: 9px; font: 11px 'DM Mono', monospace; }
+.idea-meta span { color: var(--muted); font-size: 9px; }
+.idea-retailer { display: inline-flex; margin-top: 10px; color: var(--green); font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+.idea-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 13px; }
+.idea-actions .primary-button, .idea-actions .outline-button { padding: 9px 12px; }
+.idea-refresh { margin-top: 15px; }
+.gift-idea-contributor { margin-top: 16px; }
+.gift-idea-form { margin: 16px 0 20px; padding: 18px; background: var(--paper); border: 1px solid var(--line); }
+.gift-idea-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.gift-idea-form label { display: grid; gap: 6px; color: var(--ink); font-size: 11px; font-weight: 700; }
+.gift-idea-form input, .gift-idea-form select, .gift-idea-form textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 0; background: white; color: var(--ink); font: 12px 'DM Sans', sans-serif; }
+.gift-idea-form textarea { resize: vertical; }
+.gift-idea-form input:focus-visible, .gift-idea-form select:focus-visible, .gift-idea-form textarea:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.idea-form-wide { grid-column: 1 / -1; }
+.idea-history-heading { display: flex; justify-content: space-between; align-items: center; gap: 15px; border-top: 1px solid var(--line); margin-top: 15px; padding-top: 13px; }
+.idea-history-heading .text-button { border: 0; }
+.idea-status { display: inline-flex; width: fit-content; margin-top: 12px; padding: 6px 9px; background: var(--cream); color: var(--muted); font: 9px 'DM Mono', monospace; text-transform: uppercase; }
+.idea-status-approved { color: var(--green); background: #2f514410; }
+.idea-status-denied { color: var(--red); background: #bd4d3b10; }
+.gift-ideas-panel button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .gift-ideas-panel { padding: 16px; }
+  .gift-ideas-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .gift-idea-card { grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 12px; }
+  .idea-image { height: 100px; }
+  .idea-details h4 { font-size: 18px; }
+  .gift-idea-form { padding: 13px; }
+  .gift-idea-form-grid { grid-template-columns: 1fr; }
+  .idea-form-wide { grid-column: auto; }
+}
+
 :root { font-family: 'DM Sans', sans-serif; color: #23332d; background: #f6f1e8; font-synthesis: none; --ink: #23332d; --muted: #6d756e; --cream: #f6f1e8; --paper: #fffdf8; --red: #bd4d3b; --line: #d7d4ca; --green: #2f5144; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }

@@ -1,6 +1,6 @@
 # Merrylist
 
-A shareable, animated Christmas wish list. All list content—including gifts, page copy, themes, and quiz choices—is kept in `src/data/gifts.ts` so it is easy to edit without touching the UI.
+A shareable, animated Christmas wish list. The curated gift catalog, page copy, themes, and quiz choices live in `src/data/gifts.ts`; shopper-submitted gift ideas are stored privately in Supabase until approved.
 
 ## Run locally
 
@@ -26,7 +26,7 @@ Make list changes in `src/data/gifts.ts` only. Edit the `gifts` array to add, re
 
 The same file also contains `listContent` for the page's text and metadata, plus `themes` and `quizQuestions` for filters and the gift-matching quiz.
 
-The app includes theme filtering, favorite marks, a share button, detail views, and a short gift-matching quiz for visitors who want help deciding.
+The app includes theme filtering, favorite marks, a share button, detail views, and a short gift-matching quiz for visitors who want help deciding. Signed-in shoppers can suggest a gift for review. The owner gets an in-app pending count and can approve or decline suggestions; approved gifts join the public list and quiz.
 
 The quiz asks about budget, gifting style, and an ideal day. It filters out gifts above the chosen budget, then ranks gifts by how many preference answers match their theme, with lower prices breaking ties. Results explain the match and let visitors browse alternatives, edit answers, or restart. Quiz copy and theme mappings live in `src/data/gifts.ts`; matching logic lives in `src/data/quiz.ts`.
 

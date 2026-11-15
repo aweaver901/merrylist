@@ -29,6 +29,9 @@ try {
   let revision = 0
   let mine = true
   let offline = false
+  const suggestions = []
+  const approvedIdeas = []
+  let nextIdeaId = 0
   let nextEmail = 'shopper@example.com'
   let cancelSignIn = true
   let oauthRequests = 0
@@ -51,7 +54,32 @@ try {
     if (url.includes('/user')) return route.fulfill({ json: user() })
     if (url.includes('/rpc/gift_coordination')) {
       if (offline) return route.fulfill({ status: 503, json: { message: 'Unavailable' } })
-      return route.fulfill({ json: { role: email.startsWith('owner') ? 'owner' : 'shopper', gifts: gifts.map(gift => ({ giftId: gift.id, status: gift.id === 'black-slides' ? status : 'available', revision: gift.id === 'black-slides' ? revision : 0, mine: gift.id === 'black-slides' && status !== 'available' && mine })) } })
+      return route.fulfill({ json: { role: email.startsWith('owner') ? 'owner' : 'shopper', gifts: [...gifts, ...approvedIdeas].map(gift => ({ giftId: gift.id, status: gift.id === 'black-slides' ? status : 'available', revision: gift.id === 'black-slides' ? revision : 0, mine: gift.id === 'black-slides' && status !== 'available' && mine })) } })
+    }
+    if (url.includes('/rpc/approved_gift_ideas')) return route.fulfill({ json: approvedIdeas })
+    if (url.includes('/rpc/gift_ideas')) {
+      const owner = email.startsWith('owner')
+      return route.fulfill({ json: { role: owner ? 'owner' : 'shopper', suggestions: suggestions.filter(idea => owner ? idea.status === 'pending' : idea.submitter === email).map(({ submitter, ...idea }) => idea) } })
+    }
+    if (url.includes('/rpc/submit_gift_idea')) {
+      const input = route.request().postDataJSON()
+      const id = `00000000-0000-0000-0000-${String(++nextIdeaId).padStart(12, '0')}`
+      suggestions.push({
+        id,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        submitter: email,
+        gift: { id: `idea-${id}`, name: input.p_name, cost: input.p_cost, theme: input.p_theme, link: input.p_link, description: input.p_description, image: input.p_image_url, note: input.p_note, tags: input.p_tags },
+      })
+      return route.fulfill({ json: id })
+    }
+    if (url.includes('/rpc/review_gift_idea')) {
+      const input = route.request().postDataJSON()
+      const idea = suggestions.find(candidate => candidate.id === input.p_id)
+      if (!idea || idea.status !== 'pending') return route.fulfill({ status: 409, json: { message: 'No longer pending', code: '40001' } })
+      idea.status = input.p_status
+      if (idea.status === 'approved') approvedIdeas.push(idea.gift)
+      return route.fulfill({ json: null })
     }
     if (url.includes('/rpc/set_gift_claim')) {
       const input = route.request().postDataJSON()
@@ -77,6 +105,21 @@ try {
   await signIn('shopper@example.com')
   await expect(page.getByText('Up to date', { exact: true })).toBeVisible()
   await expect(page.locator('.claim-available')).toHaveCount(23)
+  const suggestGift = async (name, price) => {
+    await page.getByRole('button', { name: 'Suggest a gift' }).click()
+    await page.getByLabel('Gift name').fill(name)
+    await page.getByLabel('Price (USD)').fill(String(price))
+    await page.getByLabel('Category').selectOption('Books')
+    await page.getByLabel('Retailer link').fill('https://example.com/gift')
+    await page.getByLabel('Short description').fill('A thoughtful recommendation.')
+    await page.getByLabel('Why do you recommend it?').fill('It would be a lovely addition.')
+    await page.getByLabel('Tags (comma-separated, optional)').fill('thoughtful, books')
+    await page.getByRole('button', { name: 'Send for review' }).click()
+    await expect(page.getByText('Your idea was sent to Austin for review.')).toBeVisible()
+  }
+  await suggestGift('A Thoughtful Book', 34.5)
+  await suggestGift('A Second Book', 25)
+  await expect(page.getByText('Your suggestions (2)', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'View Draco Slides', exact: true }).click()
   await page.getByRole('button', { name: 'I’m considering this', exact: true }).click()
   await expect(page.locator('.gift-modal').getByText('You’re considering this', { exact: true })).toBeVisible()
@@ -102,9 +145,15 @@ try {
   await expect(page.locator('.claim-badge')).toHaveCount(0)
   await signIn('owner@example.com')
   await expect(page.getByText('Your surprises are safe', { exact: true })).toBeVisible()
+  await expect(page.locator('.idea-count')).toHaveText('2 pending')
+  await page.locator('.gift-idea-card').filter({ hasText: 'A Thoughtful Book' }).getByRole('button', { name: 'Approve' }).click()
+  await expect(page.locator('.gift-card')).toHaveCount(24)
+  await expect(page.getByRole('button', { name: 'A Thoughtful Book', exact: true })).toBeVisible()
+  await page.locator('.gift-idea-card').filter({ hasText: 'A Second Book' }).getByRole('button', { name: 'Decline' }).click()
+  await expect(page.locator('.idea-count')).toHaveText('0 pending')
   // Deliberately injected statuses in the mocked owner response must be stripped.
   await expect(page.locator('.claim-badge')).toHaveCount(0)
-  await expect(page.locator('.gift-card')).toHaveCount(23)
+  await expect(page.locator('.gift-card')).toHaveCount(24)
   await page.getByRole('button', { name: 'View Draco Slides', exact: true }).click()
   await expect(page.locator('.claim-controls')).toHaveCount(0)
   await expect(page.locator('.gift-modal').getByRole('link', { name: 'See the gift' })).toBeVisible()
@@ -115,7 +164,7 @@ try {
   expect(failures).toEqual([])
   expect(oauthRequests).toBe(3)
   await context.close()
-  console.log('Browser checks passed: Google redirect and cancellation, shopper claims, live refresh, offline protection, account switching, owner privacy, and mobile layout.')
+  console.log('Browser checks passed: Google sign-in, gift idea submission/review/publication, shopper claims, live refresh, offline protection, owner privacy, and mobile layout.')
 } finally {
   await browser?.close()
   server.kill()

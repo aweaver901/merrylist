@@ -1,11 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { coordinationClient as client, readSnapshot, type Claim, type CoordinationSnapshot, type GiftStatus } from './lib/coordination'
+import type { Gift } from './data/gifts'
+import { coordinationClient as client, readApprovedIdeas, readGiftSuggestions, readSnapshot, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput } from './lib/coordination'
 
 type Coordination = {
   configured: boolean; session: Session | null; snapshot: CoordinationSnapshot | null
   loading: boolean; error: string; stale: boolean; busyGift: string | null
+  approvedIdeas: Gift[]; suggestions: GiftSuggestion[]; suggestionsLoading: boolean
+  suggestionsBusy: boolean; suggestionsError: string
   refresh: () => Promise<void>; change: (giftId: string, status: GiftStatus) => Promise<void>
+  refreshSuggestions: () => Promise<void>
+  submitSuggestion: (gift: GiftSuggestionInput) => Promise<boolean>
+  reviewSuggestion: (id: string, status: 'approved' | 'denied') => Promise<boolean>
 }
 const Context = createContext<Coordination | null>(null)
 export const useCoordination = () => {
@@ -21,10 +27,17 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState('')
   const [stale, setStale] = useState(true)
   const [busyGift, setBusyGift] = useState<string | null>(null)
+  const [approvedIdeas, setApprovedIdeas] = useState<Gift[]>([])
+  const [suggestions, setSuggestions] = useState<GiftSuggestion[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(Boolean(client))
+  const [suggestionsBusy, setSuggestionsBusy] = useState(false)
+  const [suggestionsError, setSuggestionsError] = useState('')
   const identity = useRef<string | null>(null)
   const generation = useRef(0)
   const request = useRef(0)
+  const suggestionRequest = useRef(0)
   const mutating = useRef(false)
+  const suggestionMutation = useRef(false)
 
   useEffect(() => {
     if (!client) return
@@ -33,10 +46,13 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       identity.current = nextSession?.user.id ?? null
       generation.current++
       request.current++
+      suggestionRequest.current++
       setSnapshot(null); setStale(true); setError(''); setSession(nextSession); setLoading(Boolean(nextSession))
-      setBusyGift(null)
+      setBusyGift(null); mutating.current = false; suggestionMutation.current = false
+      setApprovedIdeas([]); setSuggestions([]); setSuggestionsError(''); setSuggestionsLoading(Boolean(nextSession))
+      setSuggestionsBusy(false)
     })
-    return () => { subscription.unsubscribe(); identity.current = null; generation.current++; request.current++ }
+    return () => { subscription.unsubscribe(); identity.current = null; generation.current++; request.current++; suggestionRequest.current++ }
   }, [])
 
   const refresh = useCallback(async () => {
@@ -58,7 +74,36 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     }
   }, [session])
 
+  const refreshSuggestions = useCallback(async () => {
+    if (!client) return
+    const account = session?.user.id ?? null
+    const version = generation.current
+    const ticket = ++suggestionRequest.current
+    setSuggestionsLoading(true)
+    try {
+      const approvedRequest = client.rpc('approved_gift_ideas').abortSignal(AbortSignal.timeout(12000))
+      const suggestionsRequest = session
+        ? client.rpc('gift_ideas').abortSignal(AbortSignal.timeout(12000))
+        : Promise.resolve({ data: null, error: null })
+      const [approvedResponse, suggestionsResponse] = await Promise.all([approvedRequest, suggestionsRequest])
+      if (approvedResponse.error) throw approvedResponse.error
+      if (suggestionsResponse.error) throw suggestionsResponse.error
+      const nextApprovedIdeas = readApprovedIdeas(approvedResponse.data)
+      const nextSuggestions = session ? readGiftSuggestions(suggestionsResponse.data) : []
+      if (identity.current !== account || generation.current !== version || ticket !== suggestionRequest.current) return
+      setApprovedIdeas(nextApprovedIdeas)
+      setSuggestions(nextSuggestions)
+      setSuggestionsError('')
+    } catch {
+      if (identity.current !== account || generation.current !== version || ticket !== suggestionRequest.current) return
+      setSuggestionsError('Gift ideas could not be refreshed. Please try again.')
+    } finally {
+      if (identity.current === account && generation.current === version && ticket === suggestionRequest.current) setSuggestionsLoading(false)
+    }
+  }, [session])
+
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => { void refreshSuggestions() }, [refreshSuggestions])
   useEffect(() => {
     if (!session || snapshot?.role === 'owner') return
     const sync = () => { if (document.visibilityState === 'visible') void refresh() }
@@ -67,6 +112,15 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', sync)
     return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
   }, [session, snapshot?.role, refresh])
+
+  useEffect(() => {
+    if (!session) return
+    const sync = () => { if (document.visibilityState === 'visible') void refreshSuggestions() }
+    const interval = window.setInterval(sync, 15000)
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
+  }, [session, refreshSuggestions])
 
   const change = async (giftId: string, status: GiftStatus) => {
     if (!client || snapshot?.role !== 'shopper' || stale || mutating.current) return
@@ -87,7 +141,56 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current === version) setBusyGift(null)
     }
   }
-  return <Context.Provider value={{ configured: Boolean(client), session, snapshot, loading, error, stale, busyGift, refresh, change }}>{children}</Context.Provider>
+
+  const submitSuggestion = async (gift: GiftSuggestionInput) => {
+    if (!client || !session || snapshot?.role !== 'shopper' || suggestionMutation.current) return false
+    const version = generation.current
+    suggestionMutation.current = true; setSuggestionsBusy(true); setSuggestionsError('')
+    try {
+      const { error: failure } = await client.rpc('submit_gift_idea', {
+        p_name: gift.name,
+        p_cost: gift.cost,
+        p_theme: gift.theme,
+        p_link: gift.link,
+        p_description: gift.description,
+        p_image_url: gift.image || null,
+        p_note: gift.note,
+        p_tags: gift.tags,
+      }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      if (generation.current !== version) return false
+      await Promise.all([refreshSuggestions(), refresh()])
+      return true
+    } catch {
+      if (generation.current === version) setSuggestionsError('Your gift idea could not be submitted. Please check the details and try again.')
+      return false
+    } finally {
+      if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
+    }
+  }
+
+  const reviewSuggestion = async (id: string, status: 'approved' | 'denied') => {
+    if (!client || snapshot?.role !== 'owner' || suggestionMutation.current) return false
+    const version = generation.current
+    suggestionMutation.current = true; setSuggestionsBusy(true); setSuggestionsError('')
+    try {
+      const { error: failure } = await client.rpc('review_gift_idea', { p_id: id, p_status: status }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      if (generation.current !== version) return false
+      await Promise.all([refreshSuggestions(), refresh()])
+      return true
+    } catch {
+      if (generation.current === version) setSuggestionsError('That review could not be saved. Refresh the ideas and try again.')
+      return false
+    } finally {
+      if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
+    }
+  }
+  return <Context.Provider value={{
+    configured: Boolean(client), session, snapshot, loading, error, stale, busyGift, refresh, change,
+    approvedIdeas, suggestions, suggestionsLoading, suggestionsBusy, suggestionsError,
+    refreshSuggestions, submitSuggestion, reviewSuggestion,
+  }}>{children}</Context.Provider>
 }
 
 export function GiftClaimBadge({ giftId }: { giftId: string }) {

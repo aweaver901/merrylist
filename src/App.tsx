@@ -1,5 +1,6 @@
 import AccountPanel from './AccountPanel'
-import { GiftClaimBadge, GiftClaimControls, GiftPurchaseLink } from './Coordination'
+import { GiftClaimBadge, GiftClaimControls, GiftPurchaseLink, useCoordination } from './Coordination'
+import GiftIdeas from './GiftIdeas'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronRight, Copy, Heart, Menu, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -11,6 +12,8 @@ import GiftImage from './GiftImage'
 const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
 
 function App() {
+  const { approvedIdeas } = useCoordination()
+  const allGifts = useMemo(() => [...gifts, ...approvedIdeas], [approvedIdeas])
   const [activeTheme, setActiveTheme] = useState<(typeof themes)[number]>('All gifts')
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
@@ -24,8 +27,8 @@ function App() {
   }, [])
 
   const visibleGifts = useMemo(
-    () => activeTheme === 'All gifts' ? gifts : gifts.filter((gift) => gift.theme === activeTheme),
-    [activeTheme],
+    () => activeTheme === 'All gifts' ? allGifts : allGifts.filter((gift) => gift.theme === activeTheme),
+    [activeTheme, allGifts],
   )
 
   const toggleFavorite = (id: string) => {
@@ -73,7 +76,7 @@ function App() {
         <motion.div className="hero-art" initial={{ opacity: 0, scale: .94, rotate: 2 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: .9, delay: .15 }}>
           <div className="orbit orbit-one" /><div className="orbit orbit-two" />
           <div className="hero-image-wrap"><GiftImage src={heroGift?.image ?? ''} alt={listContent.hero.imageAlt} eager /></div>
-          <div className="hero-sticker"><span>{gifts.length}</span> {listContent.hero.stickerLabel}</div>
+          <div className="hero-sticker"><span>{allGifts.length}</span> {listContent.hero.stickerLabel}</div>
           <div className="hero-caption"><span>01</span> {listContent.hero.captionFirst}<br />{listContent.hero.captionSecond}</div>
         </motion.div>
       </section>
@@ -84,6 +87,7 @@ function App() {
           <p className="section-note">{listContent.list.noteFirst}<br />{listContent.list.noteSecond}</p>
         </div>
         <AccountPanel />
+        <GiftIdeas />
         <div className="theme-tabs" role="tablist" aria-label="Filter by theme">
           {themes.map((theme) => <button key={theme} className={activeTheme === theme ? 'active' : ''} onClick={() => setActiveTheme(theme)}>{theme}</button>)}
         </div>
@@ -104,7 +108,7 @@ function App() {
       <footer><span>{listContent.footer}</span><span className="footer-mark">{listContent.footerMark}</span></footer>
 
       <AnimatePresence>{selectedGift && <GiftModal gift={selectedGift} isFavorite={favorites.includes(selectedGift.id)} onFavorite={() => toggleFavorite(selectedGift.id)} onClose={() => setSelectedGift(null)} />}</AnimatePresence>
-      <AnimatePresence>{quizOpen && <QuizModal onClose={() => { setQuizOpen(false) }} onOpenGift={(gift) => { setQuizOpen(false); setSelectedGift(gift) }} />}</AnimatePresence>
+      <AnimatePresence>{quizOpen && <QuizModal gifts={allGifts} onClose={() => { setQuizOpen(false) }} onOpenGift={(gift) => { setQuizOpen(false); setSelectedGift(gift) }} />}</AnimatePresence>
     </main>
   )
 }

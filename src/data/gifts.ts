@@ -281,14 +281,19 @@ export const gifts: Gift[] = [
 
   ]
 
-export const themes: Array<'All gifts' | GiftTheme> = [
-  'All gifts',
+export const giftThemes: GiftTheme[] = [
   'Footwear',
   'Food & drink',
   'Gift Card',
   'Books',
-  'Safety & Security'
+  'Safety & Security',
+  'Car Accessories',
+  'Electronics',
+  'Clothing',
+  'Other',
+  'Swimming',
 ]
+export const themes: Array<'All gifts' | GiftTheme> = ['All gifts', ...giftThemes]
 
 type Option = { id: string; emoji: string; label: string; detail: string; themes?: GiftTheme[]; maxCost?: number }
 export const quizQuestions: { title: string; subtitle: string; options: Option[] }[] = [

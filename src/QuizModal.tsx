@@ -9,7 +9,7 @@ import { useCoordination } from './Coordination'
 const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
 const price = (cost: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(cost)
 
-export default function QuizModal({ onClose, onOpenGift }: { onClose: () => void; onOpenGift: (gift: Gift) => void }) {
+export default function QuizModal({ gifts, onClose, onOpenGift }: { gifts: Gift[]; onClose: () => void; onOpenGift: (gift: Gift) => void }) {
   const [answers, setAnswers] = useState<string[]>([])
   const [step, setStep] = useState(0)
   const [resultIndex, setResultIndex] = useState(0)
@@ -21,7 +21,7 @@ export default function QuizModal({ onClose, onOpenGift }: { onClose: () => void
   const { snapshot } = useCoordination()
   const complete = step === quizQuestions.length
   const question = quizQuestions[step]
-  const matches = complete ? matchGifts(answers).filter(({ gift }) => {
+  const matches = complete ? matchGifts(answers, gifts).filter(({ gift }) => {
     if (snapshot?.role !== 'shopper') return true
     const claim = snapshot.gifts.find(item => item.giftId === gift.id)
     return claim?.status === 'available' || claim?.mine
