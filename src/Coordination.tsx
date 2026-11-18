@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { Session } from '@supabase/supabase-js'
 import { fallbackChristmasSongs } from './data/christmasSongs'
 import type { Gift } from './data/gifts'
-import { coordinationClient as client, readApprovedIdeas, readChristmasSongs, readGiftPublicSettings, readGiftSuggestions, readShopperChatMessages, readSnapshot, type ChristmasSong, type ChristmasSongInput, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput, type ShopperChatMessage } from './lib/coordination'
+import { coordinationClient as client, readApprovedIdeas, readChristmasSongs, readGiftPublicSettings, readGiftSuggestions, readShopperChatMessages, readSnapshot, readSpotifyPlaylistSetting, type ChristmasSong, type ChristmasSongInput, type Claim, type CoordinationSnapshot, type GiftStatus, type GiftSuggestion, type GiftSuggestionInput, type ShopperChatMessage, type SpotifyPlaylist } from './lib/coordination'
 
 const builtInChristmasSongs: ChristmasSong[] = fallbackChristmasSongs.map((song, index) => ({
   ...song,
@@ -15,11 +15,6 @@ function mergeChristmasSongs(songs: ChristmasSong[]) {
   return [...songsByAudioUrl.values()]
 }
 
-function failureDetail(failure: unknown) {
-  if (!failure || typeof failure !== 'object' || !('message' in failure) || typeof failure.message !== 'string') return ''
-  return failure.message
-}
-
 type Coordination = {
   configured: boolean; session: Session | null; snapshot: CoordinationSnapshot | null
   loading: boolean; error: string; stale: boolean; busyGift: string | null
@@ -28,6 +23,7 @@ type Coordination = {
   giftOverrides: Gift[]; favoriteGiftIds: string[]; giftSettingsBusy: boolean; giftSettingsError: string
   chatMessages: ShopperChatMessage[]; chatLoading: boolean; chatBusy: boolean; chatError: string
   christmasSongs: ChristmasSong[]; musicLoading: boolean; musicError: string; musicBusy: boolean
+  spotifyPlaylist: SpotifyPlaylist | null; spotifyPlaylistLoading: boolean; spotifyPlaylistBusy: boolean; spotifyPlaylistError: string
   refresh: () => Promise<void>; change: (giftId: string, status: GiftStatus) => Promise<void>
   refreshSuggestions: () => Promise<void>
   submitSuggestion: (gift: GiftSuggestionInput) => Promise<boolean>
@@ -41,6 +37,8 @@ type Coordination = {
   deleteChatMessage: (id: number) => Promise<boolean>
   refreshChristmasSongs: () => Promise<boolean>
   addChristmasSong: (song: ChristmasSongInput) => Promise<boolean>
+  refreshSpotifyPlaylist: () => Promise<void>
+  setSpotifyPlaylist: (playlist: SpotifyPlaylist | null) => Promise<boolean>
 }
 const Context = createContext<Coordination | null>(null)
 export const useCoordination = () => {
@@ -73,6 +71,10 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const [musicLoading, setMusicLoading] = useState(Boolean(client))
   const [musicError, setMusicError] = useState('')
   const [musicBusy, setMusicBusy] = useState(false)
+  const [spotifyPlaylist, setSpotifyPlaylistValue] = useState<SpotifyPlaylist | null>(null)
+  const [spotifyPlaylistLoading, setSpotifyPlaylistLoading] = useState(Boolean(client))
+  const [spotifyPlaylistBusy, setSpotifyPlaylistBusy] = useState(false)
+  const [spotifyPlaylistError, setSpotifyPlaylistError] = useState('')
   const identity = useRef<string | null>(null)
   const generation = useRef(0)
   const request = useRef(0)
@@ -80,6 +82,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const giftSettingsRequest = useRef(0)
   const chatRequest = useRef(0)
   const musicRequest = useRef(0)
+  const spotifyPlaylistRequest = useRef(0)
   const musicLoaded = useRef(false)
   const chatLoaded = useRef(false)
   const mutating = useRef(false)
@@ -87,6 +90,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
   const giftSettingsMutation = useRef(false)
   const chatMutation = useRef(false)
   const musicMutation = useRef(false)
+  const spotifyPlaylistMutation = useRef(false)
 
   useEffect(() => {
     if (!client) return
@@ -189,10 +193,9 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       setGiftOverrides(next.overrides)
       setFavoriteGiftIds(next.favoriteGiftIds)
       setGiftSettingsError('')
-    } catch (failure) {
+    } catch {
       if (ticket !== giftSettingsRequest.current) return
-      const detail = failureDetail(failure)
-      setGiftSettingsError(detail ? `Public gift settings could not be loaded: ${detail}` : 'Public gift settings could not be loaded.')
+      setGiftSettingsError('Gift details and favorites could not be loaded. Please refresh the page.')
     }
   }, [])
 
@@ -218,10 +221,30 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const refreshSpotifyPlaylist = useCallback(async () => {
+    if (!client) return
+    const ticket = ++spotifyPlaylistRequest.current
+    setSpotifyPlaylistLoading(true)
+    try {
+      const { data, error: failure } = await client.rpc('spotify_playlist_setting').abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      const next = readSpotifyPlaylistSetting(data)
+      if (ticket !== spotifyPlaylistRequest.current) return
+      setSpotifyPlaylistValue(next)
+      setSpotifyPlaylistError('')
+    } catch {
+      if (ticket !== spotifyPlaylistRequest.current) return
+      setSpotifyPlaylistError('The shared Spotify playlist could not be loaded. Please refresh the page.')
+    } finally {
+      if (ticket === spotifyPlaylistRequest.current) setSpotifyPlaylistLoading(false)
+    }
+  }, [])
+
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { void refreshSuggestions() }, [refreshSuggestions])
   useEffect(() => { void refreshGiftSettings() }, [refreshGiftSettings])
   useEffect(() => { void refreshChristmasSongs() }, [refreshChristmasSongs])
+  useEffect(() => { void refreshSpotifyPlaylist() }, [refreshSpotifyPlaylist])
   useEffect(() => {
     if (!session || snapshot?.role === 'owner') return
     const sync = () => { if (document.visibilityState === 'visible') void refresh() }
@@ -256,6 +279,14 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', sync)
     return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
   }, [refreshGiftSettings])
+
+  useEffect(() => {
+    const sync = () => { if (document.visibilityState === 'visible') void refreshSpotifyPlaylist() }
+    const interval = window.setInterval(sync, 15000)
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => { window.clearInterval(interval); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
+  }, [refreshSpotifyPlaylist])
 
   useEffect(() => {
     if (!session || snapshot?.role !== 'shopper') {
@@ -317,9 +348,8 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current !== version) return false
       await Promise.all([refreshSuggestions(), refresh()])
       return true
-    } catch (failure) {
-      const detail = failureDetail(failure)
-      if (generation.current === version) setSuggestionsError(detail ? `Your gift idea could not be submitted: ${detail}` : 'Your gift idea could not be submitted. Please check the details and try again.')
+    } catch {
+      if (generation.current === version) setSuggestionsError('Your gift idea could not be submitted. Please check the details and try again.')
       return false
     } finally {
       if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
@@ -362,9 +392,8 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current !== version) return false
       await Promise.all([refreshSuggestions(), refresh()])
       return true
-    } catch (failure) {
-      const detail = failureDetail(failure)
-      if (generation.current === version) setSuggestionsError(detail ? `The gift could not be added: ${detail}` : 'The gift could not be added. Check the details and try again.')
+    } catch {
+      if (generation.current === version) setSuggestionsError('The gift could not be added to the list. Please check the details and try again.')
       return false
     } finally {
       if (generation.current === version) { suggestionMutation.current = false; setSuggestionsBusy(false) }
@@ -392,9 +421,8 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       setGiftOverrides(current => [...current.filter(item => item.id !== gift.id), gift])
       void refreshGiftSettings()
       return { ok: true }
-    } catch (failure) {
-      const detail = failureDetail(failure)
-      const error = detail ? `The gift could not be saved: ${detail}` : 'The gift could not be saved. Check the details and try again.'
+    } catch {
+      const error = 'The gift could not be saved. Please check the details and try again.'
       setGiftSettingsError(error)
       return { ok: false, error }
     } finally {
@@ -417,9 +445,8 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
         : current.filter(id => id !== giftId))
       void refreshGiftSettings()
       return true
-    } catch (failure) {
-      const detail = failureDetail(failure)
-      setGiftSettingsError(detail ? `Favorite could not be updated: ${detail}` : 'Favorite could not be updated. Please try again.')
+    } catch {
+      setGiftSettingsError('The gift favorite could not be updated. Please try again.')
       return false
     } finally {
       giftSettingsMutation.current = false
@@ -478,12 +505,33 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
       if (generation.current !== version) return false
       void refreshChristmasSongs()
       return true
-    } catch (failure) {
-      const detail = failureDetail(failure)
-      if (generation.current === version) setMusicError(detail ? `The song could not be added: ${detail}` : 'The song could not be added. Check the details and try again.')
+    } catch {
+      if (generation.current === version) setMusicError('The song could not be added to the music library. Please check the details and try again.')
       return false
     } finally {
       if (generation.current === version) { musicMutation.current = false; setMusicBusy(false) }
+    }
+  }
+  const setSpotifyPlaylist = async (playlist: SpotifyPlaylist | null) => {
+    if (!client || snapshot?.role !== 'owner' || spotifyPlaylistMutation.current) return false
+    spotifyPlaylistMutation.current = true
+    setSpotifyPlaylistBusy(true)
+    setSpotifyPlaylistError('')
+    try {
+      const { error: failure } = await client.rpc('set_spotify_playlist', {
+        p_playlist_id: playlist?.id ?? null,
+        p_playlist_name: playlist?.name ?? null,
+      }).abortSignal(AbortSignal.timeout(12000))
+      if (failure) throw failure
+      setSpotifyPlaylistValue(playlist)
+      void refreshSpotifyPlaylist()
+      return true
+    } catch {
+      setSpotifyPlaylistError('The Spotify playlist could not be saved. Please try again.')
+      return false
+    } finally {
+      spotifyPlaylistMutation.current = false
+      setSpotifyPlaylistBusy(false)
     }
   }
   return <Context.Provider value={{
@@ -494,6 +542,7 @@ export function CoordinationProvider({ children }: { children: ReactNode }) {
     refreshGiftSettings, saveGiftDetails, setOwnerGiftFavorite,
     chatMessages, chatLoading, chatBusy, chatError, refreshChat, sendChatMessage, deleteChatMessage,
     christmasSongs, musicLoading, musicError, musicBusy, refreshChristmasSongs, addChristmasSong,
+    spotifyPlaylist, spotifyPlaylistLoading, spotifyPlaylistBusy, spotifyPlaylistError, refreshSpotifyPlaylist, setSpotifyPlaylist,
   }}>{children}</Context.Provider>
 }
 
@@ -514,7 +563,7 @@ export function GiftBoughtOverlay({ giftId }: { giftId: string }) {
 }
 
 export function GiftClaimControls({ giftId }: { giftId: string }) {
-  const { configured, session, snapshot, stale, busyGift, change, error } = useCoordination()
+  const { configured, session, snapshot, stale, busyGift, change } = useCoordination()
   if (!configured || snapshot?.role === 'owner') return null
   if (!session) return <p className="claim-hint">Sign in above the gift list to coordinate with other shoppers.</p>
   if (snapshot?.role !== 'shopper') return <p className="claim-hint">Gift coordination is not ready. Check the account panel above the list.</p>
@@ -530,7 +579,6 @@ export function GiftClaimControls({ giftId }: { giftId: string }) {
       </div><p className="claim-hint">{claim.mine ? 'Tap “Mark as available” to undo your Considering or Bought selection.' : 'Other shoppers can see the status and buyer name.'} Purchase details stay hidden from the list owner.</p>
     </> : <p className="claim-hint">Another shopper has this covered. Try a different gift to avoid a duplicate.</p>}
     {busyGift === giftId && <p role="status">Saving your choice…</p>}
-    {error && <p role="alert" className="coordination-error">{error}</p>}
   </div>
 }
 

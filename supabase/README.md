@@ -12,8 +12,9 @@ Use an administrator database connection or the Supabase SQL editor to run these
 4. `migrations/202611150001_owner_gifts.sql`
 5. `migrations/202611150002_shopper_chat_and_purchase_names.sql`
 6. `migrations/202611170001_gift_editing_and_favorites.sql`
-7. `seed.sql` (if not already applied)
-8. `setup-owner.sql` (if not already applied)
+7. `migrations/202611170002_spotify_playlist.sql`
+8. `seed.sql` (if not already applied)
+9. `setup-owner.sql` (if not already applied)
 
 The owner email has been set to the address Austin provided. Keep this setting server-side. The owner is bound to their stable account ID after email verification, so changing their email later will not reveal purchase statuses. Without owner configuration, all coordination requests fail closed with no gift statuses.
 
@@ -33,15 +34,29 @@ Apply `migrations/202611150001_owner_gifts.sql` once to enable direct gift entry
 
 Apply `migrations/202611170001_gift_editing_and_favorites.sql` once to let the owner edit any published gift and mark public favorites. It also orders shopper chat history by message time; existing chat messages are retained.
 
+## Connect Spotify and choose a playlist
+
+The owner can connect Spotify, select one of their public playlists, and share it through Spotify's embedded player. Merrylist Radio remains available as an alternative. Friends play the playlist independently; playback is not synchronized between visitors.
+
+1. Apply `migrations/202611170002_spotify_playlist.sql` in Supabase.
+2. Create a Spotify app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Add the exact redirect URIs `https://fluffy-alpaca-b0139a.netlify.app/` and `http://127.0.0.1:5173/` to the app's allowlist. Spotify requires the loopback IP for local testing rather than `localhost`; open the local site at `http://127.0.0.1:5173/`. If you use another local port, add that exact URI too.
+3. Copy the Spotify **Client ID** (not the Client Secret) into `VITE_SPOTIFY_CLIENT_ID` in your local `.env.local` and your Netlify site's environment variables, then rebuild/redeploy the site. The client ID is public; do not put the Client Secret in `.env.local`, Netlify's Vite variables, or browser code.
+4. In Spotify's app settings, add the Spotify account that owns the site to the app's authorized users if the dashboard requests an allowlist. Current Development Mode also requires the app owner to have Spotify Premium and limits the app to five authorized Spotify users; only your account needs Web API authorization because visitors use the embed.
+5. Sign into Merrylist as the owner, expand the music player, choose **Connect Spotify**, authorize playlist access, and select a public playlist. Private playlists are not offered because friends need to access the playlist through Spotify's embed.
+
+The website uses Authorization Code with PKCE. Spotify access tokens are held only in page memory; Supabase stores only the selected playlist's ID and name, and only the owner can change it. Friends use the embedded player rather than connecting to the Web API, but Spotify may ask them to sign in and the playback available to them depends on their Spotify account and region.
+
+Errors from sign-in, Spotify, gift suggestions, chat, and gift coordination show a friendly explanation and a reference code. Visitors can copy a short report to text the owner; reports are not sent automatically or stored in a server-side error log.
+
 1. In Supabase, open **Authentication → Sign In / Providers → Google** (the provider page may be labeled **Providers**). Copy the **Callback URL** shown there. It normally looks like `https://YOUR-PROJECT.supabase.co/auth/v1/callback`.
 2. Open [Google Cloud Console](https://console.cloud.google.com/) with your Google account. Create or select a project named **Merrylist**.
 3. Open **Google Auth Platform** and choose **Get started** if prompted. Enter **Merrylist** as the app name and your own email for support and developer contact. Choose an **External** audience so family and friends can sign in.
 4. Under **Data Access**, use only basic identity scopes: `openid`, `https://www.googleapis.com/auth/userinfo.email`, and `https://www.googleapis.com/auth/userinfo.profile`. No Gmail or Google Drive access is needed. For initial testing, keep the app in Testing and add your account and your testers under **Audience → Test users** if required by the console. Follow Google's publishing requirements before wider release.
 5. Open **Clients → Create client**, choose **Web application**, and name it **Merrylist website**.
-6. Under **Authorized JavaScript origins**, enter your full Netlify origin, such as `https://fluffy-alpaca-b0139a.netlify.app`, without a path. For local development you can also add `http://localhost:5173` using a development client.
+6. Under **Authorized JavaScript origins**, enter your full Netlify origin, such as `https://fluffy-alpaca-b0139a.netlify.app`, without a path. For local testing with Spotify, also add `http://127.0.0.1:5173`. If you already use `http://localhost:5173` for other local sign-in testing, you may keep that origin too.
 7. Under **Authorized redirect URIs**, paste the **Supabase Callback URL from step 1**. This is the Supabase address, not your Netlify homepage. Click **Create**, then copy the **Client ID** and **Client Secret**.
 8. Return to Supabase's **Google** provider settings. Enable Google, enter the Client ID and Client Secret, and save. Leave nonce checks enabled. Do not enable the option that accepts accounts without an email address.
-9. In Supabase **Authentication → URL Configuration**, set **Site URL** to `https://fluffy-alpaca-b0139a.netlify.app/`. Add that same URL to **Redirect URLs**. For local development, also allow `http://localhost:5173/`.
+9. In Supabase **Authentication → URL Configuration**, set **Site URL** to `https://fluffy-alpaca-b0139a.netlify.app/`. Add that same URL to **Redirect URLs**. For local Spotify testing, also allow `http://127.0.0.1:5173/`. Keep `http://localhost:5173/` too if you already use it for other local sign-in tests.
 10. Disable the **Email** sign-in provider if you previously enabled it for email/password registration. Leave new-user sign-ups enabled so first-time Google visitors can join. The website no longer exposes email/password forms.
 11. Configure the frontend variables below, rebuild, and deploy. On the website, click **Sign in with Google**, and select **aweaver901@gmail.com** for the owner account. The panel should say **Your surprises are safe**.
 12. Test with a different Google account in a separate browser. That account should see gift availability and be able to claim gifts; the owner account should see no reservation or purchase labels.

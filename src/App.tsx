@@ -12,6 +12,7 @@ import { applyGiftOverrides } from './lib/coordination'
 
 import QuizModal from './QuizModal'
 import GiftImage from './GiftImage'
+import ActionErrorNotice from './ActionErrorNotice'
 
 const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
 
@@ -131,7 +132,7 @@ function App() {
         <AccountPanel />
         <GiftIdeas />
         <ShopperChat />
-        {giftSettingsError && <p className="coordination-error" role="alert">{giftSettingsError}</p>}
+        {giftSettingsError && !selectedGiftDetails && <ActionErrorNotice key={`gift-settings:${giftSettingsError}`} action="Gift details and favorites" message={giftSettingsError} />}
         <div className="theme-tabs" role="tablist" aria-label="Filter by theme">
           {themes.map((theme) => <button key={theme} className={activeTheme === theme ? 'active' : ''} onClick={() => setActiveTheme(theme)}>{theme}</button>)}
         </div>
@@ -185,18 +186,21 @@ function GiftModal({ gift, isOwner, favoriteBusy, isFavorite, onFavorite, onSave
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<GiftFormValues>(() => giftFormFromGift(gift))
   const [formError, setFormError] = useState('')
+  const [saveActionError, setSaveActionError] = useState('')
   const [savedMessage, setSavedMessage] = useState('')
 
   useEffect(() => {
     setForm(giftFormFromGift(gift))
     setEditing(false)
     setFormError('')
+    setSaveActionError('')
     setSavedMessage('')
   }, [gift.id])
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFormError('')
+    setSaveActionError('')
     setSavedMessage('')
     const result = readGiftForm(form)
     if (!result.gift) {
@@ -208,7 +212,7 @@ function GiftModal({ gift, isOwner, favoriteBusy, isFavorite, onFavorite, onSave
       setEditing(false)
       setSavedMessage('Gift details saved.')
     } else {
-      setFormError(saved.error ?? 'The gift was not saved. Check the error and try again.')
+      setSaveActionError(saved.error ?? 'The gift was not saved. Please try again.')
     }
   }
 
@@ -217,10 +221,11 @@ function GiftModal({ gift, isOwner, favoriteBusy, isFavorite, onFavorite, onSave
       {editing ? <>
         <p className="eyebrow left">Update the list</p>
         <h2>Edit gift</h2>
+        {saveActionError && <ActionErrorNotice key={`gift-edit:${saveActionError}`} action="Edit gift details" message={saveActionError} />}
         <GiftDetailsForm
           form={form}
           setForm={setForm}
-          error={formError || giftSettingsError}
+          error={formError}
           busy={giftSettingsBusy}
           action="Save changes"
           hint="Changes appear on the list and quiz for everyone. Use HTTPS retailer/photo links or keep the current local gift image."
@@ -231,6 +236,7 @@ function GiftModal({ gift, isOwner, favoriteBusy, isFavorite, onFavorite, onSave
       </> : <>
         <p className="eyebrow left">{gift.theme}</p>
         <h2>{gift.name}</h2>
+        {giftSettingsError && <ActionErrorNotice key={`gift-favorite:${giftSettingsError}`} action="Update gift favorite" message={giftSettingsError} />}
         {isFavorite && <p className="owner-favorite-callout"><Heart size={15} fill="currentColor" /> {listContent.owner}’s favorite</p>}
         <p className="modal-description">{gift.description}</p>
         <p className="modal-note">“{gift.note}”</p>

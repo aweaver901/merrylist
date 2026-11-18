@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Send, Trash2 } from 'lucide-react'
 import { useCoordination } from './Coordination'
+import ActionErrorNotice from './ActionErrorNotice'
 
 const time = (value: string) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(value))
 
@@ -58,7 +59,7 @@ export default function ShopperChat() {
         </article>)}
       </section>)}
     </div>
-    {chatError && <p className="coordination-error" role="alert">{chatError}</p>}
+    {chatError && <ActionErrorNotice key={`chat:${chatError}`} action="Shopper chat" message={chatError} />}
     <form className="shopper-chat-form" onSubmit={event => void submit(event)}>
       <label className="visually-hidden" htmlFor="shopper-chat-message">Write a message</label>
       <textarea id="shopper-chat-message" rows={2} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Write a message…" required />

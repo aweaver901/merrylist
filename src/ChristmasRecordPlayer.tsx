@@ -3,15 +3,20 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
 import { useCoordination } from './Coordination'
 import type { ChristmasSongInput } from './lib/coordination'
+import SpotifyPlaylistEmbed from './SpotifyPlaylistEmbed'
+import SpotifyPlaylistManager from './SpotifyPlaylistManager'
+import { consumeSpotifyOAuthState, createSpotifyAuthorizationUrl, exchangeSpotifyCode } from './lib/spotify'
+import ActionErrorNotice from './ActionErrorNotice'
 
 const emptySongForm: ChristmasSongInput = { title: '', artist: '', audioUrl: '', sourceUrl: '' }
+const spotifyClientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID?.trim() ?? ''
 
 function RecordDisc({ playing = false }: { playing?: boolean }) {
   return <span className={`record-disc ${playing ? 'is-playing' : ''}`} aria-hidden="true"><span className="record-disc-label" /></span>
 }
 
 export default function ChristmasRecordPlayer() {
-  const { configured, session, snapshot, christmasSongs, musicLoading, musicError, musicBusy, addChristmasSong } = useCoordination()
+  const { configured, session, snapshot, christmasSongs, musicLoading, musicError, musicBusy, addChristmasSong, spotifyPlaylist } = useCoordination()
   const [expanded, setExpanded] = useState(false)
   const reducedMotion = useReducedMotion()
   const [dockEdge, setDockEdge] = useState<'left' | 'right' | 'top' | 'bottom'>('bottom')
@@ -19,6 +24,9 @@ export default function ChristmasRecordPlayer() {
   const [dragPosition, setDragPosition] = useState<{ left: number; top: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [trackIndex, setTrackIndex] = useState(0)
+  const [musicMode, setMusicMode] = useState<'spotify' | 'radio'>('radio')
+  const [spotifySession, setSpotifySession] = useState<{ accessToken: string; expiresAt: number } | null>(null)
+  const [spotifyAuthError, setSpotifyAuthError] = useState('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [volume, setVolume] = useState(.38)
   const [error, setError] = useState('')
@@ -34,8 +42,58 @@ export default function ChristmasRecordPlayer() {
   const playTrackRef = useRef<(index: number) => Promise<void>>(async () => {})
   const playerElement = useRef<HTMLElement>(null)
   const dragOffset = useRef<{ pointerId: number; x: number; y: number } | null>(null)
+  const spotifyOAuthProcessed = useRef(false)
   songsRef.current = christmasSongs
   const isOwner = Boolean(session && snapshot?.role === 'owner')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const oauthError = params.get('error')
+    if ((!code && !oauthError) || spotifyOAuthProcessed.current) return
+
+    spotifyOAuthProcessed.current = true
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.hash}`)
+    const finishAuthorization = async () => {
+      try {
+        const verifier = consumeSpotifyOAuthState(params.get('state'))
+        if (oauthError) {
+          throw new Error(oauthError === 'access_denied' ? 'Spotify connection was canceled.' : 'Spotify could not authorize this connection.')
+        }
+        if (!spotifyClientId || !code) throw new Error('Spotify sign-in could not be completed. Connect your account again.')
+        const token = await exchangeSpotifyCode(spotifyClientId, `${window.location.origin}/`, code, verifier)
+        setSpotifySession({ accessToken: token.accessToken, expiresAt: Date.now() + token.expiresIn * 1000 })
+        setSpotifyAuthError('')
+      } catch (failure) {
+        setSpotifyAuthError(failure instanceof Error ? failure.message : 'Spotify sign-in failed. Please try again.')
+      }
+    }
+    void finishAuthorization()
+  }, [])
+
+  useEffect(() => {
+    if (!spotifySession) return
+    const timeout = window.setTimeout(() => setSpotifySession(null), Math.max(0, spotifySession.expiresAt - Date.now()))
+    return () => window.clearTimeout(timeout)
+  }, [spotifySession])
+
+  const connectSpotify = async () => {
+    setSpotifyAuthError('')
+    if (!spotifyClientId) {
+      setSpotifyAuthError('Add VITE_SPOTIFY_CLIENT_ID to the site environment before connecting Spotify.')
+      return
+    }
+    try {
+      const authorizationUrl = await createSpotifyAuthorizationUrl(spotifyClientId, `${window.location.origin}/`)
+      window.location.assign(authorizationUrl)
+    } catch {
+      setSpotifyAuthError('Spotify sign-in needs a secure browser connection. Use the deployed HTTPS site or localhost.')
+    }
+  }
+
+  useEffect(() => {
+    setMusicMode(spotifyPlaylist ? 'spotify' : 'radio')
+  }, [spotifyPlaylist?.id])
 
   const startDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const bounds = playerElement.current?.getBoundingClientRect()
@@ -125,6 +183,10 @@ export default function ChristmasRecordPlayer() {
     playingRef.current = false
     setIsPlaying(false)
   }, [])
+
+  useEffect(() => {
+    if (musicMode === 'spotify') pauseWhenLeaving()
+  }, [musicMode, pauseWhenLeaving])
 
   const playTrack = useCallback(async (index: number) => {
     const token = ++generation.current
@@ -286,12 +348,19 @@ export default function ChristmasRecordPlayer() {
       transition={{ duration: reducedMotion ? 0 : .18 }}
     >
       <header className="record-player-header">
-        <div><p className="record-player-kicker"><Disc3 size={14} /> MERRYLIST RADIO</p><span>Real recordings · public-domain carols</span></div>
+        <div><p className="record-player-kicker"><Disc3 size={14} /> MERRYLIST MUSIC</p><span>{musicMode === 'spotify' ? spotifyPlaylist?.name : 'Real recordings · public-domain carols'}</span></div>
         <div className="record-player-header-actions">
           <button className="record-player-icon-button record-player-drag-handle" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={moveByKeyboard} aria-label="Move record player; drag to any screen edge or use arrow keys"><GripVertical size={17} /></button>
           <button className="record-player-icon-button" onClick={() => setExpanded(false)} aria-label="Minimize record player"><ChevronDown size={18} /></button>
         </div>
       </header>
+      {spotifyPlaylist && <div className="record-player-modes" role="group" aria-label="Music source">
+        <button type="button" className={musicMode === 'spotify' ? 'active' : ''} aria-pressed={musicMode === 'spotify'} onClick={() => setMusicMode('spotify')}>Spotify playlist</button>
+        <button type="button" className={musicMode === 'radio' ? 'active' : ''} aria-pressed={musicMode === 'radio'} onClick={() => setMusicMode('radio')}>Merrylist Radio</button>
+      </div>}
+      {musicMode === 'spotify' && spotifyPlaylist
+        ? <SpotifyPlaylistEmbed key={spotifyPlaylist.id} playlistId={spotifyPlaylist.id} playlistName={spotifyPlaylist.name} />
+        : <>
       <div className="record-player-now">
         <RecordDisc playing={isPlaying} />
         <div>
@@ -313,9 +382,17 @@ export default function ChristmasRecordPlayer() {
         <label className="record-player-volume"><Volume2 size={16} /><span className="visually-hidden">Music volume</span><input aria-label="Music volume" type="range" min="0" max="1" step=".01" value={volume} onChange={event => setVolume(Number(event.target.value))} /><small>{Math.round(volume * 100)}%</small></label>
       </div>
       <p className="record-player-status" role="status" aria-live="polite">{song ? `${isPlaying ? 'Playing' : 'Paused'} · ${song.title}` : musicLoading ? 'Loading playlist…' : configured ? 'No songs in the playlist.' : 'Music library is not configured.'}</p>
-      {error && <p className="record-player-error" role="alert">{error}</p>}
-      {musicError && <p className="record-player-error" role="alert">{musicError}</p>}
+      {error && <ActionErrorNotice key={`radio:${error}`} action="Merrylist Radio" message={error} />}
+      {musicError && <ActionErrorNotice key={`music-library:${musicError}`} action="Merrylist music library" message={musicError} />}
+      </>}
       {isOwner && <section className="record-player-manager">
+        <SpotifyPlaylistManager
+          spotifySession={spotifySession}
+          spotifySetupError={spotifyAuthError}
+          spotifyClientIdConfigured={Boolean(spotifyClientId)}
+          onConnect={() => void connectSpotify()}
+          onSessionExpired={() => setSpotifySession(null)}
+        />
         <button className="text-button" type="button" aria-expanded={songFormOpen} onClick={() => { setSongFormOpen(open => !open); setSongFormError(''); setSongMessage('') }}>
           {songFormOpen ? 'Close song form' : 'Add a song'}
         </button>

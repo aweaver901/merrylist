@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { LockKeyhole, LogOut, RefreshCw } from 'lucide-react'
 import { useCoordination } from './Coordination'
 import { coordinationClient as client } from './lib/coordination'
+import ActionErrorNotice from './ActionErrorNotice'
 
 const signInError = 'Google sign-in was canceled or could not finish. Please try again.'
 
@@ -9,6 +10,7 @@ export default function AccountPanel() {
   const { configured, session, snapshot, loading, stale, error, refresh } = useCoordination()
   const [busy, setBusy] = useState(false)
   const [accountError, setAccountError] = useState('')
+  const [accountErrorAction, setAccountErrorAction] = useState('Google sign-in')
 
   useEffect(() => {
     const resetBusy = () => setBusy(false)
@@ -20,6 +22,7 @@ export default function AccountPanel() {
     const url = new URL(window.location.href)
     const hash = new URLSearchParams(url.hash.slice(1))
     if (!['error', 'error_code', 'error_description'].some(key => url.searchParams.has(key) || hash.has(key))) return
+    setAccountErrorAction('Google sign-in')
     setAccountError(signInError)
     const hasHashError = ['error', 'error_code', 'error_description'].some(key => hash.has(key))
     for (const key of ['error', 'error_code', 'error_description']) {
@@ -31,7 +34,7 @@ export default function AccountPanel() {
 
   const signIn = async () => {
     if (!client || busy) return
-    setBusy(true); setAccountError('')
+    setBusy(true); setAccountError(''); setAccountErrorAction('Google sign-in')
     try {
       const redirectTo = new URL(import.meta.env.BASE_URL, window.location.origin).href
       const { error: failure } = await client.auth.signInWithOAuth({
@@ -47,7 +50,7 @@ export default function AccountPanel() {
 
   const signOut = async () => {
     if (!client || busy) return
-    setBusy(true); setAccountError('')
+    setBusy(true); setAccountError(''); setAccountErrorAction('Sign out')
     try {
       const { error: failure } = await client.auth.signOut()
       if (failure) throw failure
@@ -62,8 +65,8 @@ export default function AccountPanel() {
     </div>
     {configured && !session && <p className="claim-hint google-signin-note">Use your own Google account. Other shoppers won’t see your name or email.</p>}
     {session && snapshot?.role !== 'owner' && <div className="coordination-sync"><button className="text-button" onClick={() => void refresh()} disabled={loading}><RefreshCw size={13} /> Refresh status</button><span role="status">{loading ? 'Checking…' : stale ? 'Connection needs attention' : snapshot?.role === 'shopper' ? 'Up to date' : 'Setup pending'}</span></div>}
-    {error && <p className="coordination-error" role="alert">{error}</p>}
+    {error && <ActionErrorNotice key={`coordination:${error}`} action="Gift coordination" message={error} />}
     {snapshot?.role === 'unverified' && <p className="claim-hint">Sign out and try again with a verified Google account before reserving gifts.</p>}
-    {accountError && <p role="alert" className="coordination-error">{accountError}</p>}
+    {accountError && <ActionErrorNotice key={`${accountErrorAction}:${accountError}`} action={accountErrorAction} message={accountError} />}
   </section>
 }

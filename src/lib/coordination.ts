@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { giftThemes, type Gift, type GiftTheme } from '../data/gifts'
+import { readSpotifyPlaylist, type SpotifyPlaylist } from './spotify'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -15,6 +16,11 @@ export type ChristmasSong = { id: string; title: string; artist: string; audioUr
 export type ChristmasSongInput = Omit<ChristmasSong, 'id'>
 export type ShopperChatMessage = { id: number; senderName: string; message: string; createdAt: string; mine: boolean }
 export type GiftPublicSettings = { overrides: Gift[]; favoriteGiftIds: string[] }
+export type { SpotifyPlaylist }
+
+export function readSpotifyPlaylistSetting(value: unknown): SpotifyPlaylist | null {
+  return readSpotifyPlaylist(value)
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object')

@@ -4,6 +4,7 @@ import { useCoordination } from './Coordination'
 import GiftDetailsForm, { emptyGiftForm, readGiftForm, type GiftFormValues } from './GiftDetailsForm'
 import GiftImage from './GiftImage'
 import type { GiftSuggestion } from './lib/coordination'
+import ActionErrorNotice from './ActionErrorNotice'
 
 export default function GiftIdeas() {
   const { session, snapshot, suggestions, suggestionsLoading, suggestionsBusy, suggestionsError, refreshSuggestions, submitSuggestion, reviewSuggestion, addOwnerGift } = useCoordination()
@@ -80,7 +81,7 @@ export default function GiftIdeas() {
     {isOwner && ownerFormOpen && <GiftDetailsForm
       form={ownerForm}
       setForm={value => setOwnerForm(value)}
-      error={ownerFormError || suggestionsError}
+      error={ownerFormError}
       busy={suggestionsBusy}
       action="Add to list"
       hint="This gift will appear on the public list and in the quiz immediately. Use public HTTPS product and photo links."
@@ -101,7 +102,7 @@ export default function GiftIdeas() {
       {formOpen && <GiftDetailsForm
         form={form}
         setForm={value => setForm(value)}
-        error={formError || suggestionsError}
+        error={formError}
         busy={suggestionsBusy}
         action="Send for review"
         hint="Your suggestion is private until it’s approved. Approved gifts appear on the list and in the quiz. Use public HTTPS product and photo links only."
@@ -124,7 +125,7 @@ export default function GiftIdeas() {
       </div>}
     </div>}
 
-    {suggestionsError && !formOpen && !ownerFormOpen && <p className="coordination-error" role="alert">{suggestionsError}</p>}
+    {suggestionsError && <ActionErrorNotice key={`gift-ideas:${suggestionsError}`} action="Gift ideas" message={suggestionsError} />}
     {message && <p className="claim-hint" role="status">{message}</p>}
   </section>
 }

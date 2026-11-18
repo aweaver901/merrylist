@@ -3,13 +3,14 @@ import { spawn } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { readFile } from 'node:fs/promises'
 import { stripTypeScriptTypes } from 'node:module'
+import { createHash } from 'node:crypto'
 
 const origin = 'http://127.0.0.1:4175'
 const source = await readFile(new URL('../src/data/gifts.ts', import.meta.url), 'utf8')
 const { gifts } = await import(`data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(source)).toString('base64')}`)
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '4175', '--strictPort'], {
   cwd: new URL('..', import.meta.url), windowsHide: true,
-  env: { ...process.env, VITE_SUPABASE_URL: 'https://merrylist-test.supabase.co', VITE_SUPABASE_PUBLISHABLE_KEY: 'test-public-key' },
+  env: { ...process.env, VITE_SUPABASE_URL: 'https://merrylist-test.supabase.co', VITE_SUPABASE_PUBLISHABLE_KEY: 'test-public-key', VITE_SPOTIFY_CLIENT_ID: 'test-spotify-client-id' },
   stdio: 'ignore',
 })
 let browser
@@ -45,6 +46,67 @@ try {
     audioRequests.push(route.request().url())
     await route.fulfill({ contentType: 'audio/wav', body: wav })
   })
+  await page.route('https://accounts.spotify.com/**', async route => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/authorize') {
+      expect(url.searchParams.get('client_id')).toBe('test-spotify-client-id')
+      expect(url.searchParams.get('response_type')).toBe('code')
+      expect(url.searchParams.get('redirect_uri')).toBe(origin + '/')
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+      expect(url.searchParams.get('scope')).toContain('playlist-read-private')
+      expect(url.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      spotifyCodeChallenge = url.searchParams.get('code_challenge')
+      const callback = new URL(url.searchParams.get('redirect_uri'))
+      callback.searchParams.set('code', 'test-authorization-code')
+      callback.searchParams.set('state', invalidSpotifyStateOnce ? 'wrong-state' : url.searchParams.get('state'))
+      invalidSpotifyStateOnce = false
+      spotifyAuthorizeRequests++
+      return route.fulfill({ status: 302, headers: { location: callback.toString() } })
+    }
+    if (url.pathname === '/api/token') {
+      spotifyTokenRequests++
+      const body = new URLSearchParams(route.request().postData() ?? '')
+      expect(body.get('grant_type')).toBe('authorization_code')
+      expect(body.get('client_id')).toBe('test-spotify-client-id')
+      expect(body.get('redirect_uri')).toBe(origin + '/')
+      expect(body.get('code_verifier')).toMatch(/^[A-Za-z0-9]{64}$/)
+      expect(createHash('sha256').update(body.get('code_verifier')).digest('base64url')).toBe(spotifyCodeChallenge)
+      expect(body.has('client_secret')).toBe(false)
+      return route.fulfill({ json: { access_token: 'test-spotify-access-token', token_type: 'Bearer', expires_in: 3600 } })
+    }
+    throw new Error(`Unexpected Spotify Accounts request: ${url}`)
+  })
+  await page.route('https://api.spotify.com/v1/me/playlists**', async route => {
+    expect(route.request().headers().authorization).toBe('Bearer test-spotify-access-token')
+    const url = new URL(route.request().url())
+    expect(url.searchParams.get('limit')).toBe('50')
+    spotifyPlaylistRequests++
+    if (url.searchParams.get('offset') === '0') {
+      return route.fulfill({ json: {
+        items: [
+          { id: '1234567890123456789012', name: 'Merry Christmas', public: true, tracks: { total: 12 } },
+          { id: 'abcdefghijklmnopqrstuv', name: 'Private playlist', public: false, tracks: { total: 4 } },
+        ],
+        next: 'https://api.spotify.com/v1/me/playlists?offset=50&limit=50',
+      } })
+    }
+    expect(url.searchParams.get('offset')).toBe('50')
+    return route.fulfill({ json: {
+      items: [{ id: 'ABCDEFabcdef1234567890', name: 'Another public list', public: true, tracks: { total: 8 } }],
+      next: null,
+    } })
+  })
+  await page.route('https://open.spotify.com/embed/iframe-api/v1', async route => {
+    await route.fulfill({
+      contentType: 'application/javascript',
+      body: `window.onSpotifyIframeApiReady({createController(element, options, callback) {
+        const iframe = document.createElement('iframe')
+        iframe.title = 'Spotify playlist ' + options.uri
+        element.append(iframe)
+        callback({pause() { window.__spotifyPauseCount = (window.__spotifyPauseCount || 0) + 1 }})
+      }})`,
+    })
+  })
   let email = ''
   let status = 'available'
   let revision = 0
@@ -57,6 +119,13 @@ try {
   const chatMessages = []
   const giftOverrides = []
   const ownerFavorites = new Set()
+  let spotifyPlaylistSetting = null
+  let invalidSpotifyStateOnce = true
+  let spotifyAuthorizeRequests = 0
+  let spotifyTokenRequests = 0
+  let spotifyCodeChallenge = ''
+  let spotifyPlaylistRequests = 0
+  let spotifyPauseCount = 0
   for (let index = 0; index < 12; index++) {
     chatMessages.push({ id: index + 1, sender: 'history@example.com', senderName: 'History Shopper', message: `Earlier message ${index + 1}`, createdAt: new Date(Date.now() - 86400000).toISOString() })
   }
@@ -93,6 +162,13 @@ try {
     }
     if (url.includes('/rpc/approved_gift_ideas')) return route.fulfill({ json: approvedIdeas })
     if (url.includes('/rpc/gift_public_settings')) return route.fulfill({ json: { overrides: giftOverrides, favoriteGiftIds: [...ownerFavorites] } })
+    if (url.includes('/rpc/spotify_playlist_setting')) return route.fulfill({ json: spotifyPlaylistSetting })
+    if (url.includes('/rpc/set_spotify_playlist')) {
+      if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
+      const input = route.request().postDataJSON()
+      spotifyPlaylistSetting = input.p_playlist_id === null ? null : { id: input.p_playlist_id, name: input.p_playlist_name }
+      return route.fulfill({ json: null })
+    }
     if (url.includes('/rpc/save_gift_details')) {
       if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
       const input = route.request().postDataJSON()
@@ -232,7 +308,7 @@ try {
   await page.setViewportSize(viewport)
   await assertPlayerInsideViewport()
   await expect(page.getByLabel('Choose a carol').locator('option')).toHaveCount(6)
-  await expect(page.locator('.record-player-error')).toContainText('The online playlist is unavailable')
+  await expect(page.locator('.action-error')).toContainText('The online playlist is unavailable')
   await page.getByRole('button', { name: 'Play Christmas music' }).click()
   await expect(page.locator('.record-player-status')).toHaveText('Playing · Jingle Bells')
   await page.evaluate(() => {
@@ -261,6 +337,19 @@ try {
   await expect(page.getByRole('button', { name: 'Add a song' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Google sign-in was canceled')
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async text => { window.__copiedErrorReport = text } },
+    })
+  })
+  const signInError = page.locator('.action-error').filter({ hasText: 'Google sign-in was canceled' })
+  await expect(signInError.locator('code')).toHaveText(/^ML-/)
+  await signInError.getByRole('button', { name: 'Copy report for texting' }).click()
+  await expect(signInError.getByRole('status')).toContainText('Report copied')
+  const copiedErrorReport = await page.evaluate(() => window.__copiedErrorReport)
+  expect(copiedErrorReport).toContain('Action: Google sign-in')
+  expect(copiedErrorReport).toContain('What happened: Google sign-in was canceled or could not finish.')
   await expect(page.getByRole('button', { name: 'Sign in with Google', exact: true })).toBeEnabled()
   expect(page.url()).not.toContain('error_description')
   cancelSignIn = false
@@ -313,7 +402,7 @@ try {
   await page.getByLabel('Short description').fill('A thoughtful recommendation.')
   await page.getByLabel('Why do you recommend it?').fill('It would be a lovely addition.')
   await page.getByRole('button', { name: 'Send for review' }).click()
-  await expect(page.getByRole('alert').filter({ hasText: 'Suggestion rejected for the test.' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Your gift idea could not be submitted.' })).toBeVisible()
   await page.getByRole('button', { name: 'Close form' }).click()
   await page.getByRole('button', { name: 'View Draco Slides', exact: true }).click()
   await page.getByRole('button', { name: 'I’m considering this', exact: true }).click()
@@ -365,6 +454,43 @@ try {
   await expect(page.getByText('A New Carol was added to the playlist.')).toBeVisible()
   await expect(page.getByLabel('Choose a carol').locator('option')).toHaveCount(7)
   await expect(page.getByLabel('Choose a carol')).toContainText('A New Carol')
+  await page.getByRole('button', { name: 'Connect Spotify', exact: true }).click()
+  await page.getByRole('button', { name: 'Connect Spotify account', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Open Christmas record player' })).toBeVisible()
+  await page.waitForFunction(() => window.location.search === '')
+  expect(new URL(page.url()).search).toBe('')
+  await page.getByRole('button', { name: 'Open Christmas record player' }).click()
+  await page.getByRole('button', { name: 'Connect Spotify', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'could not be verified' })).toBeVisible()
+  await page.getByRole('button', { name: 'Connect Spotify account', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Open Christmas record player' })).toBeVisible()
+  await page.waitForFunction(() => window.location.search === '')
+  expect(spotifyAuthorizeRequests).toBe(2)
+  expect(spotifyTokenRequests).toBe(1)
+  expect(spotifyPlaylistRequests).toBe(0)
+  await page.getByRole('button', { name: 'Open Christmas record player' }).click()
+  const spotifyPlaylistSelect = page.getByRole('combobox', { name: 'Spotify playlist' })
+  await expect(spotifyPlaylistSelect.locator('option')).toHaveCount(3)
+  await expect(spotifyPlaylistSelect).not.toContainText('Private playlist')
+  await expect(spotifyPlaylistSelect).toContainText('Merry Christmas')
+  await expect(spotifyPlaylistSelect).toContainText('Another public list')
+  expect(spotifyPlaylistRequests).toBe(2)
+  await spotifyPlaylistSelect.selectOption('1234567890123456789012')
+  await page.getByRole('button', { name: 'Use this playlist' }).click()
+  await expect(page.getByText('“Merry Christmas” is now the shared Spotify playlist.')).toBeVisible()
+  await expect(page.locator('.spotify-embed iframe')).toBeVisible()
+  const pausesBeforeHidden = await page.evaluate(() => window.__spotifyPauseCount || 0)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect.poll(() => page.evaluate(() => window.__spotifyPauseCount || 0)).toBeGreaterThan(pausesBeforeHidden)
+  await page.evaluate(() => { delete document.visibilityState })
+  await page.getByRole('button', { name: 'Merrylist Radio' }).click()
+  await expect(page.locator('.spotify-embed iframe')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Spotify playlist', exact: true }).click()
+  await expect(page.locator('.spotify-embed iframe')).toBeVisible()
+  await page.getByRole('button', { name: 'Minimize record player' }).click()
   await expect(page.locator('.idea-count')).toHaveText('2 pending')
   await page.locator('.gift-idea-card').filter({ hasText: 'A Thoughtful Book' }).getByRole('button', { name: 'Approve' }).click()
   await expect(page.locator('.gift-card')).toHaveCount(24)
@@ -405,13 +531,16 @@ try {
   await expect(page.getByText('I can coordinate here.')).toBeVisible()
   await expect(page.getByText('Earlier message 1', { exact: true })).toBeVisible()
   await expect(page.locator('.shopper-chat-day-heading').filter({ hasText: 'Yesterday' })).toBeVisible()
+  const shopperOpenPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
+  if (await shopperOpenPlayer.isVisible()) await shopperOpenPlayer.click()
+  await expect(page.locator('.spotify-embed iframe')).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })
   await page.locator('#gift-coordination').scrollIntoViewIfNeeded()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(failures).toEqual([])
   expect(oauthRequests).toBe(4)
   await context.close()
-  console.log('Browser checks passed: gift editing and favorites, suggestions and review, music, chat history, claim undo, and mobile layout.')
+  console.log('Browser checks passed: Spotify PKCE, playlist pagination and sharing, gift editing and favorites, suggestions and review, music, chat history, claim undo, and mobile layout.')
 } finally {
   await browser?.close()
   server.kill()

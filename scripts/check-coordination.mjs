@@ -49,6 +49,8 @@ const getChatMessages = async () => (await db.query('select public.get_chat_mess
 const sendChatMessage = message => db.query('select public.send_chat_message($1) as id', [message])
 const deleteChatMessage = id => db.query('select public.delete_chat_message($1)', [id])
 const getGiftPublicSettings = async () => (await db.query('select public.gift_public_settings() as result')).rows[0].result
+const getSpotifyPlaylistSetting = async () => (await db.query('select public.spotify_playlist_setting() as result')).rows[0].result
+const setSpotifyPlaylist = (id, name) => db.query('select public.set_spotify_playlist($1, $2)', [id, name])
 const saveGiftDetails = (giftId, name = 'Updated gift') => db.query(
   'select public.save_gift_details($1, $2, $3, $4, $5, $6, $7, $8, $9)',
   [giftId, name, 56.75, 'Books', 'https://example.com/updated', 'Updated description.', '/gifts/the-book.jpg', 'Updated note.', ['updated', 'test']],
@@ -65,6 +67,7 @@ await db.exec(await readFile(new URL('../supabase/migrations/202611140003_christ
 await db.exec(await readFile(new URL('../supabase/migrations/202611150001_owner_gifts.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611150002_shopper_chat_and_purchase_names.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611170001_gift_editing_and_favorites.sql', import.meta.url), 'utf8'))
+await db.exec(await readFile(new URL('../supabase/migrations/202611170002_spotify_playlist.sql', import.meta.url), 'utf8'))
 await asUser(null, () => denied(snapshot, '42501'))
 await asUser(unverified, async () => {
   assert.deepEqual(await snapshot(), { role: 'unverified', gifts: [] })
@@ -78,8 +81,10 @@ await asUser(null, async () => {
   assert.equal(songs.length, 6)
   assert.equal(songs[0].title, 'Jingle Bells')
   assert.deepEqual(await getGiftPublicSettings(), { overrides: [], favoriteGiftIds: [] })
+  assert.equal(await getSpotifyPlaylistSetting(), null)
   await denied(addChristmasSong, '42501')
   await denied(addOwnerGift, '42501')
+  await denied(() => setSpotifyPlaylist('1234567890123456789012', 'Public playlist'), '42501')
   await denied(() => saveGiftDetails('black-slides'), '42501')
   await denied(() => setOwnerGiftFavorite('black-slides', true), '42501')
   await denied(getChatMessages, '42501')
@@ -144,6 +149,10 @@ await asUser(owner, async () => {
     note: 'Updated note.',
     tags: ['updated', 'test'],
   })
+  await setSpotifyPlaylist('1234567890123456789012', 'Holiday Playlist')
+  assert.deepEqual(await getSpotifyPlaylistSetting(), { id: '1234567890123456789012', name: 'Holiday Playlist' })
+  await denied(() => setSpotifyPlaylist('invalid-id', 'Not a valid playlist'), '22023')
+  await denied(() => setSpotifyPlaylist('1234567890123456789012', ''), '22023')
   await denied(() => saveGiftDetails('not-a-gift'), '22023')
   await denied(() => saveGiftDetails('black-slides', ''), '22023')
   assert.deepEqual((await db.query('select gift_id from public.gift_claim_updates')).rows, [])
@@ -162,6 +171,13 @@ await asUser(owner, async () => {
   await denied(() => addChristmasSong('', 'https://example.com/empty.mp3'), '22023')
   await denied(() => addChristmasSong('Unsafe audio', 'javascript:alert(1)'), '22023')
   await denied(addChristmasSong, '23505')
+})
+await asUser(null, async () => {
+  assert.deepEqual(await getSpotifyPlaylistSetting(), { id: '1234567890123456789012', name: 'Holiday Playlist' })
+})
+await asUser(owner, async () => {
+  await setSpotifyPlaylist(null, null)
+  assert.equal(await getSpotifyPlaylistSetting(), null)
 })
 let firstIdeaId
 await asUser(first, async () => {
@@ -271,4 +287,4 @@ await asUser(first, async () => {
 await db.query('update auth.users set email = $1 where id = $2', ['owner-new@example.com', owner])
 await asUser(owner, async () => assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] }))
 await db.close()
-console.log('Database checks passed: purchase privacy, secured claim updates, shopper chat, gift review, owner gift publishing, and music management.')
+console.log('Database checks passed: purchase privacy, secured claim updates, shopper chat, gift review, owner gift publishing, music management, and Spotify playlist permissions.')
