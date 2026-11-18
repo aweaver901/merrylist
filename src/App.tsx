@@ -3,10 +3,12 @@ import { GiftBoughtOverlay, GiftClaimBadge, GiftClaimControls, GiftPurchaseLink,
 import ChristmasRecordPlayer from './ChristmasRecordPlayer'
 import GiftIdeas from './GiftIdeas'
 import ShopperChat from './ShopperChat'
+import GiftDetailsForm, { giftFormFromGift, readGiftForm, type GiftFormValues } from './GiftDetailsForm'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronRight, Copy, Heart, Menu, Sparkles, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { gifts, listContent, themes, type Gift } from './data/gifts'
+import { applyGiftOverrides } from './lib/coordination'
 
 import QuizModal from './QuizModal'
 import GiftImage from './GiftImage'
@@ -14,11 +16,10 @@ import GiftImage from './GiftImage'
 const personalize = (text: string) => text.replaceAll('{owner}', listContent.owner)
 
 function App() {
-  const { approvedIdeas, session, snapshot, stale } = useCoordination()
-  const allGifts = useMemo(() => [...gifts, ...approvedIdeas], [approvedIdeas])
+  const { approvedIdeas, favoriteGiftIds, giftOverrides, giftSettingsBusy, giftSettingsError, session, snapshot, stale, setOwnerGiftFavorite, saveGiftDetails } = useCoordination()
+  const allGifts = useMemo(() => applyGiftOverrides([...gifts, ...approvedIdeas], giftOverrides), [approvedIdeas, giftOverrides])
   const [activeTheme, setActiveTheme] = useState<(typeof themes)[number]>('All gifts')
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null)
-  const [favorites, setFavorites] = useState<string[]>([])
   const [quizOpen, setQuizOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -59,8 +60,9 @@ function App() {
     [activeTheme, allGifts],
   )
 
+  const selectedGiftDetails = selectedGift ? allGifts.find(gift => gift.id === selectedGift.id) ?? selectedGift : null
   const toggleFavorite = (id: string) => {
-    setFavorites((current) => current.includes(id) ? current.filter((favorite) => favorite !== id) : [...current, id])
+    void setOwnerGiftFavorite(id, !favoriteGiftIds.includes(id))
   }
 
   const copyList = async () => {
@@ -129,12 +131,13 @@ function App() {
         <AccountPanel />
         <GiftIdeas />
         <ShopperChat />
+        {giftSettingsError && <p className="coordination-error" role="alert">{giftSettingsError}</p>}
         <div className="theme-tabs" role="tablist" aria-label="Filter by theme">
           {themes.map((theme) => <button key={theme} className={activeTheme === theme ? 'active' : ''} onClick={() => setActiveTheme(theme)}>{theme}</button>)}
         </div>
         <motion.div className="gift-grid" layout>
           <AnimatePresence mode="popLayout">
-            {visibleGifts.map((gift, index) => <GiftCard key={gift.id} gift={gift} index={index} isFavorite={favorites.includes(gift.id)} onFavorite={() => toggleFavorite(gift.id)} onOpen={() => setSelectedGift(gift)} />)}
+            {visibleGifts.map((gift, index) => <GiftCard key={gift.id} gift={gift} index={index} isOwner={snapshot?.role === 'owner'} favoriteBusy={giftSettingsBusy} isFavorite={favoriteGiftIds.includes(gift.id)} onFavorite={() => toggleFavorite(gift.id)} onOpen={() => setSelectedGift(gift)} />)}
           </AnimatePresence>
         </motion.div>
       </section>
@@ -149,16 +152,27 @@ function App() {
       <footer><span>{listContent.footer}</span><span className="footer-mark">{listContent.footerMark}</span></footer>
 
       <ChristmasRecordPlayer />
-      <AnimatePresence>{selectedGift && <GiftModal gift={selectedGift} isFavorite={favorites.includes(selectedGift.id)} onFavorite={() => toggleFavorite(selectedGift.id)} onClose={() => setSelectedGift(null)} />}</AnimatePresence>
+      <AnimatePresence>{selectedGiftDetails && <GiftModal
+        key={selectedGiftDetails.id}
+        gift={selectedGiftDetails}
+        isOwner={snapshot?.role === 'owner'}
+        favoriteBusy={giftSettingsBusy}
+        isFavorite={favoriteGiftIds.includes(selectedGiftDetails.id)}
+        onFavorite={() => toggleFavorite(selectedGiftDetails.id)}
+        onSave={saveGiftDetails}
+        onClose={() => setSelectedGift(null)}
+      />}</AnimatePresence>
       <AnimatePresence>{quizOpen && <QuizModal gifts={allGifts} onClose={() => { setQuizOpen(false) }} onOpenGift={(gift) => { setQuizOpen(false); setSelectedGift(gift) }} />}</AnimatePresence>
     </main>
   )
 }
 
-function GiftCard({ gift, index, isFavorite, onFavorite, onOpen }: { gift: Gift; index: number; isFavorite: boolean; onFavorite: () => void; onOpen: () => void }) {
+function GiftCard({ gift, index, isOwner, favoriteBusy, isFavorite, onFavorite, onOpen }: { gift: Gift; index: number; isOwner: boolean; favoriteBusy: boolean; isFavorite: boolean; onFavorite: () => void; onOpen: () => void }) {
   return <motion.article className="gift-card" layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: .95 }} transition={{ duration: .35, delay: index * .06 }}>
     <button className="image-button" onClick={onOpen} aria-label={`View ${gift.name}`}><GiftImage src={gift.image} alt={gift.name} /><GiftBoughtOverlay giftId={gift.id} /><span className="view-pill">View <ArrowUpRight size={14} /></span></button>
-    <div className="card-meta"><span className="theme-label">{gift.theme}</span><button className={`heart-button ${isFavorite ? 'hearted' : ''}`} onClick={onFavorite} aria-label={isFavorite ? 'Remove from favorites' : 'Save as favorite'}><Heart size={17} fill={isFavorite ? 'currentColor' : 'none'} /></button></div>
+    <div className="card-meta"><span className="theme-label">{gift.theme}</span>{isOwner
+      ? <button className={`heart-button ${isFavorite ? 'hearted' : ''}`} disabled={favoriteBusy} onClick={onFavorite} aria-label={isFavorite ? `Remove ${gift.name} from favorites` : `Mark ${gift.name} as a favorite`}><Heart size={17} fill={isFavorite ? 'currentColor' : 'none'} /></button>
+      : isFavorite && <span className="owner-favorite-mark"><Heart size={14} fill="currentColor" /> {listContent.owner}’s favorite</span>}</div>
     <GiftClaimBadge giftId={gift.id} />
     <button className="card-title" onClick={onOpen}>{gift.name}</button>
     <p>{gift.description}</p>
@@ -166,9 +180,69 @@ function GiftCard({ gift, index, isFavorite, onFavorite, onOpen }: { gift: Gift;
   </motion.article>
 }
 
-function GiftModal({ gift, isFavorite, onFavorite, onClose }: { gift: Gift; isFavorite: boolean; onFavorite: () => void; onClose: () => void }) {
-  return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div className="gift-modal" initial={{ opacity: 0, y: 28, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18 }} onClick={(event) => event.stopPropagation()}>
-    <button className="close-button" onClick={onClose} aria-label="Close"><X size={19} /></button><div className="modal-image"><GiftImage src={gift.image} alt={gift.name} /></div><div className="modal-content"><p className="eyebrow left">{gift.theme}</p><h2>{gift.name}</h2><p className="modal-description">{gift.description}</p><p className="modal-note">“{gift.note}”</p><div className="modal-details"><strong>${gift.cost}</strong><span>{gift.tags.join('  ·  ')}</span></div><div className="modal-actions"><GiftPurchaseLink giftId={gift.id} href={gift.link} /><button className={`outline-button ${isFavorite ? 'saved' : ''}`} onClick={onFavorite}>{isFavorite ? <Check size={16} /> : <Heart size={16} />} {isFavorite ? 'Saved for later' : 'This one feels right'}</button></div><GiftClaimControls giftId={gift.id} /></div>
+function GiftModal({ gift, isOwner, favoriteBusy, isFavorite, onFavorite, onSave, onClose }: { gift: Gift; isOwner: boolean; favoriteBusy: boolean; isFavorite: boolean; onFavorite: () => void; onSave: (gift: Gift) => Promise<{ ok: boolean; error?: string }>; onClose: () => void }) {
+  const { giftSettingsBusy, giftSettingsError } = useCoordination()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState<GiftFormValues>(() => giftFormFromGift(gift))
+  const [formError, setFormError] = useState('')
+  const [savedMessage, setSavedMessage] = useState('')
+
+  useEffect(() => {
+    setForm(giftFormFromGift(gift))
+    setEditing(false)
+    setFormError('')
+    setSavedMessage('')
+  }, [gift.id])
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setFormError('')
+    setSavedMessage('')
+    const result = readGiftForm(form)
+    if (!result.gift) {
+      setFormError(result.error)
+      return
+    }
+    const saved = await onSave({ ...result.gift, id: gift.id })
+    if (saved.ok) {
+      setEditing(false)
+      setSavedMessage('Gift details saved.')
+    } else {
+      setFormError(saved.error ?? 'The gift was not saved. Check the error and try again.')
+    }
+  }
+
+  return <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}><motion.div className={`gift-modal ${editing ? 'gift-modal-editing' : ''}`} initial={{ opacity: 0, y: 28, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18 }} onClick={event => event.stopPropagation()}>
+    <button className="close-button" onClick={onClose} aria-label="Close"><X size={19} /></button><div className="modal-image"><GiftImage src={gift.image} alt={gift.name} /></div><div className="modal-content">
+      {editing ? <>
+        <p className="eyebrow left">Update the list</p>
+        <h2>Edit gift</h2>
+        <GiftDetailsForm
+          form={form}
+          setForm={setForm}
+          error={formError || giftSettingsError}
+          busy={giftSettingsBusy}
+          action="Save changes"
+          hint="Changes appear on the list and quiz for everyone. Use HTTPS retailer/photo links or keep the current local gift image."
+          onSubmit={event => void save(event)}
+        />
+        {savedMessage && <p className="claim-hint" role="status">{savedMessage}</p>}
+        <button className="text-button" type="button" onClick={() => { setEditing(false); setForm(giftFormFromGift(gift)); setFormError('') }}>Cancel editing</button>
+      </> : <>
+        <p className="eyebrow left">{gift.theme}</p>
+        <h2>{gift.name}</h2>
+        {isFavorite && <p className="owner-favorite-callout"><Heart size={15} fill="currentColor" /> {listContent.owner}’s favorite</p>}
+        <p className="modal-description">{gift.description}</p>
+        <p className="modal-note">“{gift.note}”</p>
+        <div className="modal-details"><strong>${gift.cost}</strong><span>{gift.tags.join('  ·  ')}</span></div>
+        <div className="modal-actions">
+          <GiftPurchaseLink giftId={gift.id} href={gift.link} />
+          {isOwner && <button className={`outline-button ${isFavorite ? 'saved' : ''}`} disabled={favoriteBusy} onClick={onFavorite}>{isFavorite ? <Check size={16} /> : <Heart size={16} />} {isFavorite ? 'Remove favorite' : 'Mark as favorite'}</button>}
+          {isOwner && <button className="outline-button" onClick={() => { setEditing(true); setFormError('') }}>Edit gift details</button>}
+        </div>
+        <GiftClaimControls giftId={gift.id} />
+      </>}
+    </div>
   </motion.div></motion.div>
 }
 

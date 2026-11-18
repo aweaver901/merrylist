@@ -14,6 +14,7 @@ export type GiftSuggestionInput = Omit<Gift, 'id' | 'image'> & { image: string }
 export type ChristmasSong = { id: string; title: string; artist: string; audioUrl: string; sourceUrl: string }
 export type ChristmasSongInput = Omit<ChristmasSong, 'id'>
 export type ShopperChatMessage = { id: number; senderName: string; message: string; createdAt: string; mine: boolean }
+export type GiftPublicSettings = { overrides: Gift[]; favoriteGiftIds: string[] }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object')
@@ -35,6 +36,25 @@ function readGift(value: unknown): Gift {
 export function readApprovedIdeas(value: unknown): Gift[] {
   if (!Array.isArray(value)) throw new Error('Invalid approved gift response')
   return value.map(readGift)
+}
+
+export function readGiftPublicSettings(value: unknown): GiftPublicSettings {
+  if (!isRecord(value) || !Array.isArray(value.overrides) || !Array.isArray(value.favoriteGiftIds) ||
+      !value.favoriteGiftIds.every(id => typeof id === 'string')) {
+    throw new Error('Invalid public gift settings response')
+  }
+  return {
+    overrides: readApprovedIdeas(value.overrides),
+    favoriteGiftIds: value.favoriteGiftIds,
+  }
+}
+
+export function applyGiftOverrides(giftList: Gift[], overrides: Gift[]) {
+  const overridesById = new Map(overrides.map(gift => [gift.id, gift]))
+  return giftList.map(gift => {
+    const override = overridesById.get(gift.id)
+    return override ? { ...gift, ...override } : gift
+  })
 }
 
 export function readGiftSuggestions(value: unknown): GiftSuggestion[] {

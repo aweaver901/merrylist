@@ -48,6 +48,12 @@ const reviewIdea = (id, status) => db.query('select public.review_gift_idea($1, 
 const getChatMessages = async () => (await db.query('select public.get_chat_messages() as result')).rows[0].result
 const sendChatMessage = message => db.query('select public.send_chat_message($1) as id', [message])
 const deleteChatMessage = id => db.query('select public.delete_chat_message($1)', [id])
+const getGiftPublicSettings = async () => (await db.query('select public.gift_public_settings() as result')).rows[0].result
+const saveGiftDetails = (giftId, name = 'Updated gift') => db.query(
+  'select public.save_gift_details($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+  [giftId, name, 56.75, 'Books', 'https://example.com/updated', 'Updated description.', '/gifts/the-book.jpg', 'Updated note.', ['updated', 'test']],
+)
+const setOwnerGiftFavorite = (giftId, favorite) => db.query('select public.set_owner_gift_favorite($1, $2)', [giftId, favorite])
 const denied = async (fn, code) => assert.rejects(fn, error => error.code === code)
 let firstChatMessageId
 
@@ -58,6 +64,7 @@ await db.exec(await readFile(new URL('../supabase/migrations/202611140002_gift_i
 await db.exec(await readFile(new URL('../supabase/migrations/202611140003_christmas_songs.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611150001_owner_gifts.sql', import.meta.url), 'utf8'))
 await db.exec(await readFile(new URL('../supabase/migrations/202611150002_shopper_chat_and_purchase_names.sql', import.meta.url), 'utf8'))
+await db.exec(await readFile(new URL('../supabase/migrations/202611170001_gift_editing_and_favorites.sql', import.meta.url), 'utf8'))
 await asUser(null, () => denied(snapshot, '42501'))
 await asUser(unverified, async () => {
   assert.deepEqual(await snapshot(), { role: 'unverified', gifts: [] })
@@ -70,8 +77,11 @@ await asUser(null, async () => {
   const songs = await christmasSongs()
   assert.equal(songs.length, 6)
   assert.equal(songs[0].title, 'Jingle Bells')
+  assert.deepEqual(await getGiftPublicSettings(), { overrides: [], favoriteGiftIds: [] })
   await denied(addChristmasSong, '42501')
   await denied(addOwnerGift, '42501')
+  await denied(() => saveGiftDetails('black-slides'), '42501')
+  await denied(() => setOwnerGiftFavorite('black-slides', true), '42501')
   await denied(getChatMessages, '42501')
   await denied(() => sendChatMessage('No guest messages'), '42501')
 })
@@ -80,9 +90,13 @@ await asUser(first, async () => {
   await denied(() => db.query("update merrylist_private.settings set owner_email = 'fake@example.com'"), '42501')
   await denied(() => db.query('select merrylist_private.viewer_role()'), '42501')
   await denied(() => db.query('select * from merrylist_private.christmas_songs'), '42501')
+  await denied(() => db.query('select * from merrylist_private.gift_overrides'), '42501')
+  await denied(() => db.query('select * from merrylist_private.owner_favorite_gifts'), '42501')
   await denied(addChristmasSong, '42501')
   await denied(() => db.query('select * from merrylist_private.owner_gifts'), '42501')
   await denied(addOwnerGift, '42501')
+  await denied(() => saveGiftDetails('black-slides'), '42501')
+  await denied(() => setOwnerGiftFavorite('black-slides', true), '42501')
   const before = await snapshot()
   assert.equal(before.role, 'shopper')
   assert.equal(before.gifts.length, 23)
@@ -115,6 +129,23 @@ await asUser(second, async () => {
 })
 await asUser(owner, async () => {
   assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] })
+  await saveGiftDetails('black-slides', 'A Better Book')
+  await setOwnerGiftFavorite('black-slides', true)
+  let settings = await getGiftPublicSettings()
+  assert.deepEqual(settings.favoriteGiftIds, ['black-slides'])
+  assert.deepEqual(settings.overrides[0], {
+    id: 'black-slides',
+    name: 'A Better Book',
+    cost: 56.75,
+    theme: 'Books',
+    link: 'https://example.com/updated',
+    description: 'Updated description.',
+    image: '/gifts/the-book.jpg',
+    note: 'Updated note.',
+    tags: ['updated', 'test'],
+  })
+  await denied(() => saveGiftDetails('not-a-gift'), '22023')
+  await denied(() => saveGiftDetails('black-slides', ''), '22023')
   assert.deepEqual((await db.query('select gift_id from public.gift_claim_updates')).rows, [])
   await denied(getChatMessages, '42501')
   await denied(() => sendChatMessage('Owner is excluded'), '42501')
@@ -155,6 +186,8 @@ await asUser(owner, async () => {
   assert.equal(inbox.suggestions[0].gift.name, 'A thoughtful new gift')
   await denied(() => reviewIdea(firstIdeaId, 'pending'), '22023')
   await reviewIdea(firstIdeaId, 'approved')
+  await saveGiftDetails(`idea-${firstIdeaId}`, 'Updated shopper idea')
+  await setOwnerGiftFavorite(`idea-${firstIdeaId}`, true)
   await denied(() => reviewIdea(firstIdeaId, 'denied'), '40001')
   assert.deepEqual(await snapshot(), { role: 'owner', gifts: [] })
 })
@@ -204,6 +237,8 @@ await asUser(owner, async () => {
   await denied(() => db.query('select * from merrylist_private.owner_gifts'), '42501')
   const ownerGiftId = (await addOwnerGift()).rows[0].id
   assert.match(ownerGiftId, /^[0-9a-f-]{36}$/)
+  await saveGiftDetails(`owner-${ownerGiftId}`, 'Updated owner gift')
+  await setOwnerGiftFavorite(`owner-${ownerGiftId}`, true)
   await denied(() => addOwnerGift('Invalid gift', 'javascript:alert(1)'), '22023')
   const published = await approvedIdeas()
   const addedGift = published.find(gift => gift.id === `owner-${ownerGiftId}`)
@@ -214,6 +249,18 @@ await asUser(null, async () => {
   const published = await approvedIdeas()
   assert.equal(published.length, 2)
   assert.ok(published.some(gift => gift.id.startsWith('owner-')))
+  const settings = await getGiftPublicSettings()
+  assert.equal(settings.overrides[0].name, 'A Better Book')
+  assert.ok(settings.overrides.some(gift => gift.id.startsWith('idea-') && gift.name === 'Updated shopper idea'))
+  assert.ok(settings.overrides.some(gift => gift.id.startsWith('owner-') && gift.name === 'Updated owner gift'))
+  assert.ok(settings.favoriteGiftIds.includes('idea-' + firstIdeaId))
+  assert.ok(settings.favoriteGiftIds.some(id => id.startsWith('owner-')))
+})
+await asUser(owner, async () => {
+  await setOwnerGiftFavorite('black-slides', false)
+  const favorites = (await getGiftPublicSettings()).favoriteGiftIds
+  assert.equal(favorites.length, 2)
+  assert.ok(!favorites.includes('black-slides'))
 })
 await asUser(first, async () => {
   const gifts = (await snapshot()).gifts

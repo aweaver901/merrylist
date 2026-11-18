@@ -55,11 +55,17 @@ try {
   const approvedIdeas = []
   const addedSongs = []
   const chatMessages = []
+  const giftOverrides = []
+  const ownerFavorites = new Set()
+  for (let index = 0; index < 12; index++) {
+    chatMessages.push({ id: index + 1, sender: 'history@example.com', senderName: 'History Shopper', message: `Earlier message ${index + 1}`, createdAt: new Date(Date.now() - 86400000).toISOString() })
+  }
   let nextIdeaId = 0
   let nextOwnerGiftId = 0
   let nextEmail = 'shopper@example.com'
   let cancelSignIn = true
   let oauthRequests = 0
+  let failNextSuggestion = false
   const user = () => ({ id: email.startsWith('owner') ? '00000000-0000-0000-0000-000000000001' : '00000000-0000-0000-0000-000000000002', aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: new Date().toISOString(), app_metadata: { provider: 'google', providers: ['google'] }, user_metadata: { full_name: email.startsWith('owner') ? 'Owner Example' : 'Shopper Example' } })
   await page.route('https://merrylist-test.supabase.co/**', async route => {
     const url = route.request().url()
@@ -86,6 +92,23 @@ try {
       }) } })
     }
     if (url.includes('/rpc/approved_gift_ideas')) return route.fulfill({ json: approvedIdeas })
+    if (url.includes('/rpc/gift_public_settings')) return route.fulfill({ json: { overrides: giftOverrides, favoriteGiftIds: [...ownerFavorites] } })
+    if (url.includes('/rpc/save_gift_details')) {
+      if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
+      const input = route.request().postDataJSON()
+      const updatedGift = { id: input.p_gift_id, name: input.p_name, cost: input.p_cost, theme: input.p_theme, link: input.p_link, description: input.p_description, image: input.p_image_url, note: input.p_note, tags: input.p_tags }
+      const index = giftOverrides.findIndex(gift => gift.id === input.p_gift_id)
+      if (index < 0) giftOverrides.push(updatedGift)
+      else giftOverrides[index] = updatedGift
+      return route.fulfill({ json: null })
+    }
+    if (url.includes('/rpc/set_owner_gift_favorite')) {
+      if (!email.startsWith('owner')) return route.fulfill({ status: 403, json: { message: 'Owner access required' } })
+      const input = route.request().postDataJSON()
+      if (input.p_favorite) ownerFavorites.add(input.p_gift_id)
+      else ownerFavorites.delete(input.p_gift_id)
+      return route.fulfill({ json: null })
+    }
     if (url.includes('/rpc/get_chat_messages')) return route.fulfill({ json: chatMessages.map(message => ({ ...message, mine: message.sender === email })) })
     if (url.includes('/rpc/send_chat_message')) {
       const input = route.request().postDataJSON()
@@ -133,6 +156,10 @@ try {
       return route.fulfill({ json: { role: owner ? 'owner' : 'shopper', suggestions: suggestions.filter(idea => owner ? idea.status === 'pending' : idea.submitter === email).map(({ submitter, ...idea }) => idea) } })
     }
     if (url.includes('/rpc/submit_gift_idea')) {
+      if (failNextSuggestion) {
+        failNextSuggestion = false
+        return route.fulfill({ status: 400, json: { message: 'Suggestion rejected for the test.' } })
+      }
       const input = route.request().postDataJSON()
       const id = `00000000-0000-0000-0000-${String(++nextIdeaId).padStart(12, '0')}`
       suggestions.push({
@@ -244,10 +271,19 @@ try {
   await signIn('shopper@example.com')
   await expect(page.getByText('Up to date', { exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Shopper chat' })).toBeVisible()
+  await expect(page.locator('.shopper-chat-day-heading').filter({ hasText: 'Yesterday' })).toBeVisible()
   await page.getByLabel('Write a message').fill('I can coordinate here.')
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.getByText('I can coordinate here.')).toBeVisible()
   await expect(page.getByText('Shopper Example', { exact: true })).toBeVisible()
+  const chatHistory = page.locator('.shopper-chat-messages')
+  await chatHistory.evaluate(element => new Promise(resolve => {
+    element.addEventListener('scroll', () => resolve(true), { once: true })
+    element.scrollTop = 0
+  }))
+  chatMessages.push({ id: chatMessages.length + 1, sender: 'another@example.com', senderName: 'Another Shopper', message: 'A new message while you read history.', createdAt: new Date().toISOString() })
+  await expect(page.getByText('A new message while you read history.')).toBeVisible({ timeout: 8000 })
+  expect(await chatHistory.evaluate(element => element.scrollTop)).toBe(0)
   const openPlayer = page.getByRole('button', { name: 'Open Christmas record player' })
   if (await openPlayer.isVisible()) await openPlayer.click()
   await expect(page.getByRole('button', { name: 'Add a song' })).toHaveCount(0)
@@ -268,12 +304,27 @@ try {
   await suggestGift('A Thoughtful Book', 34.5)
   await suggestGift('A Second Book', 25)
   await expect(page.getByText('Your suggestions (2)', { exact: true })).toBeVisible()
+  failNextSuggestion = true
+  await page.getByRole('button', { name: 'Suggest a gift' }).click()
+  await page.getByLabel('Gift name').fill('A Suggestion That Fails')
+  await page.getByLabel('Price (USD)').fill('10')
+  await page.getByLabel('Category').selectOption('Books')
+  await page.getByLabel('Retailer link').fill('https://example.com/gift')
+  await page.getByLabel('Short description').fill('A thoughtful recommendation.')
+  await page.getByLabel('Why do you recommend it?').fill('It would be a lovely addition.')
+  await page.getByRole('button', { name: 'Send for review' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Suggestion rejected for the test.' })).toBeVisible()
+  await page.getByRole('button', { name: 'Close form' }).click()
   await page.getByRole('button', { name: 'View Draco Slides', exact: true }).click()
   await page.getByRole('button', { name: 'I’m considering this', exact: true }).click()
   await expect(page.locator('.gift-modal').getByText('You’re considering this', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'I bought this', exact: true }).click()
   await expect(page.locator('.gift-modal').getByText('You bought this', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Release my claim', exact: true }).click()
+  await page.getByRole('button', { name: 'Mark as available', exact: true }).click()
+  await expect(page.locator('.gift-modal').getByText('Available to gift', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'I’m considering this', exact: true }).click()
+  await expect(page.locator('.gift-modal').getByText('You’re considering this', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Mark as available', exact: true }).click()
   await expect(page.locator('.gift-modal').getByText('Available to gift', { exact: true })).toBeVisible()
   // Another visitor's update arrives through the normal refresh mechanism.
   const statusChangedAt = Date.now()
@@ -337,14 +388,30 @@ try {
   await page.getByRole('button', { name: 'View Draco Slides', exact: true }).click()
   await expect(page.locator('.claim-controls')).toHaveCount(0)
   await expect(page.locator('.gift-modal').getByRole('link', { name: 'See the gift' })).toBeVisible()
+  await page.locator('.gift-modal').getByRole('button', { name: 'Mark as favorite' }).click()
+  await expect(page.getByRole('button', { name: 'Remove Draco Slides from favorites' })).toBeVisible()
+  await page.locator('.gift-modal').getByRole('button', { name: 'Edit gift details' }).click()
+  await page.getByLabel('Gift name').fill('Updated Draco Slides')
+  await page.getByLabel('Price (USD)').fill('101.25')
+  await page.getByLabel('Short description').fill('Updated gift details.')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.locator('.gift-modal h2')).toHaveText('Updated Draco Slides')
+  await expect(page.locator('.gift-modal .modal-details strong')).toHaveText('$101.25')
+  await expect(page.locator('.gift-card').filter({ hasText: 'Updated Draco Slides' }).locator('.card-bottom')).toContainText('$101.25')
   await page.locator('.gift-modal').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await signIn('shopper@example.com')
+  await expect(page.locator('.gift-card').filter({ hasText: 'Updated Draco Slides' }).locator('.owner-favorite-mark')).toContainText('favorite')
+  await expect(page.getByText('I can coordinate here.')).toBeVisible()
+  await expect(page.getByText('Earlier message 1', { exact: true })).toBeVisible()
+  await expect(page.locator('.shopper-chat-day-heading').filter({ hasText: 'Yesterday' })).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })
   await page.locator('#gift-coordination').scrollIntoViewIfNeeded()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(failures).toEqual([])
-  expect(oauthRequests).toBe(3)
+  expect(oauthRequests).toBe(4)
   await context.close()
-  console.log('Browser checks passed: owner-added gifts, owner-managed music, gift idea review, shopper claims, and mobile layout.')
+  console.log('Browser checks passed: gift editing and favorites, suggestions and review, music, chat history, claim undo, and mobile layout.')
 } finally {
   await browser?.close()
   server.kill()

@@ -11,8 +11,9 @@ Use an administrator database connection or the Supabase SQL editor to run these
 3. `migrations/202611140003_christmas_songs.sql`
 4. `migrations/202611150001_owner_gifts.sql`
 5. `migrations/202611150002_shopper_chat_and_purchase_names.sql`
-6. `seed.sql` (if not already applied)
-7. `setup-owner.sql` (if not already applied)
+6. `migrations/202611170001_gift_editing_and_favorites.sql`
+7. `seed.sql` (if not already applied)
+8. `setup-owner.sql` (if not already applied)
 
 The owner email has been set to the address Austin provided. Keep this setting server-side. The owner is bound to their stable account ID after email verification, so changing their email later will not reveal purchase statuses. Without owner configuration, all coordination requests fail closed with no gift statuses.
 
@@ -29,6 +30,8 @@ For gift suggestions, existing deployments only need to apply the new `migration
 Apply `migrations/202611140003_christmas_songs.sql` once to enable the owner-managed music playlist. It seeds the current carols in the database; after signing in as the configured owner, expand the record player and choose **Add a song**. Use a public HTTPS URL to a direct playable audio file and provide its source or attribution link. Spotify and YouTube page URLs are not direct audio files.
 
 Apply `migrations/202611150001_owner_gifts.sql` once to enable direct gift entry. The signed-in owner can add a gift from the **Gift ideas** panel; it appears immediately on the public list and in the quiz, without going through the shopper suggestion review flow.
+
+Apply `migrations/202611170001_gift_editing_and_favorites.sql` once to let the owner edit any published gift and mark public favorites. It also orders shopper chat history by message time; existing chat messages are retained.
 
 1. In Supabase, open **Authentication → Sign In / Providers → Google** (the provider page may be labeled **Providers**). Copy the **Callback URL** shown there. It normally looks like `https://YOUR-PROJECT.supabase.co/auth/v1/callback`.
 2. Open [Google Cloud Console](https://console.cloud.google.com/) with your Google account. Create or select a project named **Merrylist**.
@@ -70,11 +73,15 @@ Use only the publishable key. Never put a service-role key, database password, o
 - Considering reserves one gift until explicitly released; it does not expire automatically. Bought means the shopper marked it bought, not that a retailer confirmed payment.
 - Shopper status subscribes to a row-secured Realtime update and also polls every two seconds while the tab is visible, on focus, and after changes. A newly bought gift is highlighted on shopper pages with an in-page notice. Actual delivery time depends on Supabase Realtime and network latency; polling is the fallback. The UI offers manual refresh and disables actions when the status cannot be checked.
 - Signed-in shoppers can use the private group chat. The configured owner account cannot read or post in chat. Messages are stored until their sender deletes them, and chat refreshes every four seconds while visible.
+- Chat history is retained without an automatic daily purge, grouped by date, and available by scrolling to earlier messages. Each sender can delete only their own messages.
 - Signed-in shoppers can submit gift name, price, category, retailer link, description, personal recommendation, optional HTTPS photo URL, and tags. Suggestions are private to the submitter and owner while pending; submitters can see their own review status.
 - The owner sees an in-app pending count and can approve or decline suggestions. The list refreshes every 15 seconds while the owner is signed in, on focus, and on request. No email or browser-notification service is configured.
 - Approved ideas become public gift cards, appear in the quiz, and enter the shared coordination catalog. Declined ideas remain private to the submitter. Images use optional HTTPS URLs; uploaded files and image hosting are not part of this feature.
 - The signed-in owner can add gifts directly from the Gift ideas panel. These are stored separately from shopper suggestions and immediately appear in the public list, quiz, and coordination catalog.
+- The signed-in owner can edit any published gift, including original, approved, and owner-added gifts. Public gift overrides are stored in the database; shoppers and guests see the same updated details.
+- The signed-in owner can mark favorites with the heart controls. Favorites are shared publicly and labeled as the list owner's picks; visitors cannot change them.
 - The signed-in owner can add songs to the public playlist from the record player. Track metadata and HTTPS audio/source URLs are stored in the private database schema; anonymous visitors can read the playlist only through a narrow public RPC.
+- Shoppers can undo their own Considering or Bought claim by marking the gift available again.
 - The database serializes changes per gift and checks a revision number. Two shoppers acting on the same old availability cannot both succeed.
 - All claim tables live in an unexposed private schema, with row-level security and no browser grants. The browser can call only the narrowly scoped public RPCs.
 - Owner RPC responses contain no statuses, buyer identities, timestamps, counts, or revisions. The owner sees all gifts and unchanged quiz candidates; the app does not reveal claims through hidden or removed gifts. Shopper quiz results exclude gifts marked bought.

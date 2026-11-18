@@ -197,6 +197,13 @@ a { text-decoration: none; }
 .shopper-chat-message time { color: var(--muted); font: 9px 'DM Mono', monospace; }
 .shopper-chat-message p { margin: 5px 0 0; color: var(--ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .shopper-chat-message .text-button { margin-top: 7px; padding: 0; font-size: 10px; }
+.shopper-chat-day { display: grid; gap: 10px; }
+.shopper-chat-day-heading { position: sticky; top: -14px; z-index: 1; margin: 0 -14px; padding: 7px 14px; background: var(--paper); color: var(--muted); font: 9px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .8px; }
+.owner-favorite-mark, .owner-favorite-callout { display: inline-flex; align-items: center; gap: 5px; color: var(--red); font-size: 10px; font-weight: 700; }
+.owner-favorite-mark { white-space: nowrap; }
+.owner-favorite-callout { margin: 0 0 12px; }
+.gift-modal-editing .modal-content { max-height: 92vh; overflow-y: auto; }
+.gift-modal-editing .gift-idea-form { margin-top: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .shopper-chat-form { display: flex; gap: 10px; margin-top: 12px; }
 .shopper-chat-form textarea { flex: 1; min-width: 0; resize: vertical; padding: 11px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: 12px 'DM Sans', sans-serif; }
