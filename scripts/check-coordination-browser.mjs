@@ -84,15 +84,22 @@ try {
     if (url.searchParams.get('offset') === '0') {
       return route.fulfill({ json: {
         items: [
-          { id: '1234567890123456789012', name: 'Merry Christmas', public: true, tracks: { total: 12 } },
+          { id: '1234567890123456789012', name: 'Merry Christmas', public: true, items: { total: 12 } },
           { id: 'abcdefghijklmnopqrstuv', name: 'Private playlist', public: false, tracks: { total: 4 } },
         ],
         next: 'https://api.spotify.com/v1/me/playlists?offset=50&limit=50',
       } })
     }
     expect(url.searchParams.get('offset')).toBe('50')
+    const items = [
+      { id: 'ABCDEFabcdef1234567890', name: 'Another public list', public: true, tracks: { total: 8 } },
+      { id: 'abcdefABCDEF1234567890', name: 'Count unavailable', public: true },
+    ]
+    if (includeNewSpotifyPlaylist) {
+      items.push({ id: '1234567890abcdefghijkl', name: 'Just Added', public: true, items: { total: 6 } })
+    }
     return route.fulfill({ json: {
-      items: [{ id: 'ABCDEFabcdef1234567890', name: 'Another public list', public: true, tracks: { total: 8 } }],
+      items,
       next: null,
     } })
   })
@@ -100,6 +107,7 @@ try {
     await route.fulfill({
       contentType: 'application/javascript',
       body: `window.onSpotifyIframeApiReady({createController(element, options, callback) {
+        window.__spotifyControllerCount = (window.__spotifyControllerCount || 0) + 1
         const iframe = document.createElement('iframe')
         iframe.title = 'Spotify playlist ' + options.uri
         element.append(iframe)
@@ -126,6 +134,7 @@ try {
   let spotifyCodeChallenge = ''
   let spotifyPlaylistRequests = 0
   let spotifyPauseCount = 0
+  let includeNewSpotifyPlaylist = false
   for (let index = 0; index < 12; index++) {
     chatMessages.push({ id: index + 1, sender: 'history@example.com', senderName: 'History Shopper', message: `Earlier message ${index + 1}`, createdAt: new Date(Date.now() - 86400000).toISOString() })
   }
@@ -470,14 +479,24 @@ try {
   expect(spotifyPlaylistRequests).toBe(0)
   await page.getByRole('button', { name: 'Open Christmas record player' }).click()
   const spotifyPlaylistSelect = page.getByRole('combobox', { name: 'Spotify playlist' })
-  await expect(spotifyPlaylistSelect.locator('option')).toHaveCount(3)
-  await expect(spotifyPlaylistSelect).not.toContainText('Private playlist')
-  await expect(spotifyPlaylistSelect).toContainText('Merry Christmas')
-  await expect(spotifyPlaylistSelect).toContainText('Another public list')
+  await expect(spotifyPlaylistSelect.locator('option')).toHaveCount(5)
+  await expect(spotifyPlaylistSelect.locator('option').nth(1)).toHaveText('Merry Christmas · 12 tracks')
+  await expect(spotifyPlaylistSelect.locator('option').nth(2)).toHaveText('Private playlist · Private')
+  await expect(spotifyPlaylistSelect.locator('option').nth(2)).toBeDisabled()
+  await expect(spotifyPlaylistSelect.locator('option').nth(3)).toHaveText('Another public list · 8 tracks')
+  await expect(spotifyPlaylistSelect.locator('option').nth(4)).toHaveText('Count unavailable')
   expect(spotifyPlaylistRequests).toBe(2)
+  includeNewSpotifyPlaylist = true
+  await page.getByRole('button', { name: 'Refresh Spotify playlists' }).click()
+  await expect(spotifyPlaylistSelect).toContainText('Just Added · 6 tracks')
+  expect(spotifyPlaylistRequests).toBe(4)
   await spotifyPlaylistSelect.selectOption('1234567890123456789012')
   await page.getByRole('button', { name: 'Use this playlist' }).click()
   await expect(page.getByText('“Merry Christmas” is now the shared Spotify playlist.')).toBeVisible()
+  await expect(page.locator('.spotify-embed iframe')).toBeVisible()
+  const controllersBeforeReload = await page.evaluate(() => window.__spotifyControllerCount || 0)
+  await page.getByRole('button', { name: 'Reload Spotify playlist' }).click()
+  await expect.poll(() => page.evaluate(() => window.__spotifyControllerCount || 0)).toBeGreaterThan(controllersBeforeReload)
   await expect(page.locator('.spotify-embed iframe')).toBeVisible()
   const pausesBeforeHidden = await page.evaluate(() => window.__spotifyPauseCount || 0)
   await page.evaluate(() => {

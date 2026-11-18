@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCoordination } from './Coordination'
-import { fetchSpotifyPublicPlaylists, type SpotifyPlaylistChoice } from './lib/spotify'
+import { fetchSpotifyPlaylists, type SpotifyPlaylistChoice } from './lib/spotify'
 import ActionErrorNotice from './ActionErrorNotice'
 
 type SpotifySession = { accessToken: string; expiresAt: number }
@@ -32,13 +32,19 @@ export default function SpotifyPlaylistManager({ spotifySession, spotifySetupErr
     setLoading(true)
     setError('')
     try {
-      const next = await fetchSpotifyPublicPlaylists(accessToken)
+      const next = await fetchSpotifyPlaylists(accessToken)
       setPlaylists(next)
       setSelectedId(current => current || spotifyPlaylist?.id || '')
-      if (!next.length) setMessage('No public playlists were found. Make a playlist public in Spotify, then reconnect.')
+      if (!next.some(playlist => playlist.public === true)) {
+        setMessage(next.length
+          ? 'Your playlists are listed below. Make one public in Spotify before sharing it.'
+          : 'No playlists were found. Try refreshing after adding a playlist to your Spotify library.')
+      }
+      return true
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Spotify playlists could not be loaded.')
       if (failure instanceof Error && failure.message.includes('connection expired')) onSessionExpired()
+      return false
     } finally {
       setLoading(false)
     }
@@ -76,6 +82,13 @@ export default function SpotifyPlaylistManager({ spotifySession, spotifySetupErr
     }
   }
 
+  const refreshPlaylists = async () => {
+    setMessage('')
+    if (spotifySession && await loadPlaylists(spotifySession.accessToken)) {
+      setMessage('Spotify playlists refreshed.')
+    }
+  }
+
   return <section className="record-player-manager spotify-playlist-manager">
     <button className="text-button" type="button" aria-expanded={open} onClick={() => { setOpen(value => !value); setError(''); setMessage('') }}>
       {open ? 'Close Spotify settings' : spotifyPlaylist ? 'Change Spotify playlist' : 'Connect Spotify'}
@@ -85,12 +98,18 @@ export default function SpotifyPlaylistManager({ spotifySession, spotifySetupErr
       {!spotifySession ? <button className="outline-button" type="button" disabled={!spotifyClientIdConfigured} onClick={onConnect}>
         {spotifyPlaylist ? 'Reconnect to choose a playlist' : 'Connect Spotify account'}
       </button> : <>
-        <button className="outline-button" type="button" disabled={loading} onClick={() => void loadPlaylists(spotifySession.accessToken)}>Reload Spotify playlists</button>
+        <button className="outline-button" type="button" disabled={loading} onClick={() => void refreshPlaylists()}>Refresh Spotify playlists</button>
         {loading && <p className="claim-hint" role="status">Loading your Spotify playlists…</p>}
         <label>Choose a public playlist
           <select aria-label="Spotify playlist" value={selectedId} onChange={event => setSelectedId(event.target.value)} disabled={loading || playlists.length === 0}>
             <option value="">Select a playlist</option>
-            {playlists.map(playlist => <option value={playlist.id} key={playlist.id}>{playlist.name} · {playlist.tracks} tracks</option>)}
+            {playlists.map(playlist => <option value={playlist.id} key={playlist.id} disabled={playlist.public !== true}>
+              {playlist.name}{playlist.public === false
+                ? ' · Private'
+                : playlist.public === null
+                  ? ' · Visibility unknown'
+                  : playlist.tracks === null ? '' : ` · ${playlist.tracks} tracks`}
+            </option>)}
           </select>
         </label>
         <button className="primary-button" type="button" disabled={loading || spotifyPlaylistBusy || !selectedId} onClick={() => void saveSelection()}>
@@ -99,7 +118,7 @@ export default function SpotifyPlaylistManager({ spotifySession, spotifySetupErr
         {spotifyPlaylist && <button className="text-button" type="button" disabled={spotifyPlaylistBusy} onClick={() => void clearSelection()}>Remove Spotify playlist</button>}
         {!loading && playlists.length === 0 && <p className="claim-hint">Only public playlists can be shared here.</p>}
       </>}
-      <p className="claim-hint">Your Spotify login is used only to list playlists and is not saved. Friends play the selected public playlist in Spotify’s embedded player.</p>
+      <p className="claim-hint">Your Spotify login is used only to list playlists and is not saved. Refresh after adding a playlist; only playlists marked public can be shared.</p>
       {error && <ActionErrorNotice key={`spotify-playlists:${error}`} action="Spotify playlists" message={error} />}
       {spotifySetupError && <ActionErrorNotice key={`spotify-connection:${spotifySetupError}`} action="Spotify connection" message={spotifySetupError} />}
       {spotifyPlaylistError && <ActionErrorNotice key={`spotify-setting:${spotifyPlaylistError}`} action="Spotify playlist setting" message={spotifyPlaylistError} />}

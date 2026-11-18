@@ -41,6 +41,7 @@ function loadSpotifyIframeApi() {
 export default function SpotifyPlaylistEmbed({ playlistId, playlistName }: { playlistId: string; playlistName: string }) {
   const container = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
+  const [reloadVersion, setReloadVersion] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -80,11 +81,12 @@ export default function SpotifyPlaylistEmbed({ playlistId, playlistName }: { pla
       window.removeEventListener('blur', pause)
       container.current?.replaceChildren()
     }
-  }, [playlistId])
+  }, [playlistId, reloadVersion])
 
   return <section className="spotify-embed-section" aria-label={`Spotify playlist ${playlistName}`}>
     <div ref={container} className="spotify-embed" />
+    <button className="text-button" type="button" onClick={() => setReloadVersion(version => version + 1)}>Reload Spotify playlist</button>
     {error && <ActionErrorNotice key={`spotify-player:${error}`} action="Spotify player" message={error} />}
-    <p className="claim-hint">Playback is provided by Spotify. Sign in to Spotify in the player if prompted.</p>
+    <p className="claim-hint">Playback and track availability are controlled by Spotify. Sign in in the player if prompted; reload the playlist after changing it in Spotify.</p>
   </section>
 }

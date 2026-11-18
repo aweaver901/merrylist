@@ -1,8 +1,8 @@
 export type SpotifyPlaylist = { id: string; name: string }
 
 export type SpotifyPlaylistChoice = SpotifyPlaylist & {
-  public: boolean
-  tracks: number
+  public: boolean | null
+  tracks: number | null
 }
 
 const verifierKey = 'merrylist.spotify.pkce-verifier'
@@ -72,7 +72,7 @@ export async function exchangeSpotifyCode(clientId: string, redirectUri: string,
   return { accessToken: result.access_token, expiresIn: result.expires_in }
 }
 
-export async function fetchSpotifyPublicPlaylists(accessToken: string): Promise<SpotifyPlaylistChoice[]> {
+export async function fetchSpotifyPlaylists(accessToken: string): Promise<SpotifyPlaylistChoice[]> {
   const playlists: SpotifyPlaylistChoice[] = []
   for (let offset = 0; ; offset += 50) {
     const url = new URL('https://api.spotify.com/v1/me/playlists')
@@ -91,12 +91,13 @@ export async function fetchSpotifyPublicPlaylists(accessToken: string): Promise<
           typeof item.name !== 'string' || !item.name.trim()) {
         continue
       }
-      if (item.public === true) {
-        const tracks = isRecord(item.tracks) && typeof item.tracks.total === 'number' && Number.isFinite(item.tracks.total)
-          ? item.tracks.total
-          : 0
-        playlists.push({ id: item.id, name: item.name.trim().slice(0, 120), public: true, tracks })
-      }
+      const trackCollection = isRecord(item.items) ? item.items : isRecord(item.tracks) ? item.tracks : null
+      const tracks = trackCollection && typeof trackCollection.total === 'number' &&
+        Number.isSafeInteger(trackCollection.total) && trackCollection.total >= 0
+        ? trackCollection.total
+        : null
+      const isPublic = item.public === true ? true : item.public === false ? false : null
+      playlists.push({ id: item.id, name: item.name.trim().slice(0, 120), public: isPublic, tracks })
     }
     if (result.next === null) return playlists
     if (typeof result.next !== 'string' || offset >= 100000) {
